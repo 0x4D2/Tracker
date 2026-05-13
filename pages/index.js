@@ -7,6 +7,7 @@ const INITIAL_STATE = {
   totals: {},
   todayEntries: [],
   recentEntries: [],
+  lastSeen: {},
   stats: {
     daysLeft: 365,
     daysTotal: 365,
@@ -63,7 +64,22 @@ function drawTextWithHalo(context, text, x, y, {
   context.restore();
 }
 
-function drawWeb(canvas, habits, totals, stats, todayEntries, time = 0, flash = null) {
+function oldHabitDecay(lastSeenDate) {
+  if (!lastSeenDate) return 0.18;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const last = new Date(lastSeenDate);
+  last.setHours(0, 0, 0, 0);
+  const days = Math.round((today - last) / 86400000);
+  if (days === 0) return 1.0;
+  if (days <= 3) return 0.82;
+  if (days <= 7) return 0.6;
+  if (days <= 14) return 0.4;
+  if (days <= 30) return 0.22;
+  return 0.1;
+}
+
+function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, time = 0, flash = null) {
   if (!canvas) {
     return;
   }
@@ -283,11 +299,12 @@ function drawWeb(canvas, habits, totals, stats, todayEntries, time = 0, flash = 
   spokes.forEach((spoke) => {
     const count = totals[spoke.id] || 0;
     const isNew = spoke.type === "new";
+    const decay = isNew ? 1.0 : oldHabitDecay(lastSeen[spoke.id]);
 
     context.beginPath();
     context.moveTo(centerX, centerY);
     context.lineTo(spoke.endX, spoke.endY);
-    context.strokeStyle = isNew ? "rgba(201,168,76,0.06)" : "rgba(204,68,68,0.06)";
+    context.strokeStyle = isNew ? "rgba(201,168,76,0.06)" : `rgba(204,68,68,${0.06 * decay})`;
     context.lineWidth = 0.5;
     context.stroke();
 
@@ -295,9 +312,9 @@ function drawWeb(canvas, habits, totals, stats, todayEntries, time = 0, flash = 
       const flashIntensity = flash && flash.habitId === spoke.id
         ? Math.max(0, 1 - (Date.now() - flash.startTime) / 400)
         : 0;
-      const thickness = (isCompact ? 0.65 : 0.8) + Math.log(count + 1) * (isCompact ? 1.8 : 2.2);
-      const brightness = Math.min((0.15 + Math.log(count + 1) * 0.12) + flashIntensity * 0.5, 1);
-      const glowSize = (isCompact ? 2 : 3) + Math.log(count + 1) * (isCompact ? 2.2 : 3);
+      const thickness = ((isCompact ? 0.65 : 0.8) + Math.log(count + 1) * (isCompact ? 1.8 : 2.2)) * (isNew ? 1 : decay);
+      const brightness = Math.min((0.15 + Math.log(count + 1) * 0.12) * (isNew ? 1 : decay) + flashIntensity * 0.5, 1);
+      const glowSize = ((isCompact ? 2 : 3) + Math.log(count + 1) * (isCompact ? 2.2 : 3)) * (isNew ? 1 : decay);
       const color = isNew
         ? `rgba(201,168,76,${brightness})`
         : `rgba(220,80,80,${brightness})`;
@@ -315,7 +332,8 @@ function drawWeb(canvas, habits, totals, stats, todayEntries, time = 0, flash = 
 
       const milestone = count >= 100 ? 100 : count >= 30 ? 30 : count >= 7 ? 7 : 0;
       if (milestone) {
-        const milestoneAlpha = milestone === 100 ? 0.34 : milestone === 30 ? 0.24 : 0.16;
+        const baseMilestoneAlpha = milestone === 100 ? 0.34 : milestone === 30 ? 0.24 : 0.16;
+        const milestoneAlpha = isNew ? baseMilestoneAlpha : baseMilestoneAlpha * decay;
         const milestoneWidth = thickness + (milestone === 100 ? 2.2 : milestone === 30 ? 1.4 : 0.8);
 
         context.beginPath();
@@ -323,7 +341,7 @@ function drawWeb(canvas, habits, totals, stats, todayEntries, time = 0, flash = 
         context.lineTo(spoke.endX, spoke.endY);
         context.strokeStyle = isNew
           ? `rgba(240,208,128,${milestoneAlpha})`
-          : `rgba(255,140,140,${Math.max(milestoneAlpha - 0.04, 0.12)})`;
+          : `rgba(255,140,140,${Math.max(milestoneAlpha - 0.04, 0.04)})`;
         context.lineWidth = milestoneWidth;
         context.shadowColor = isNew ? "#f0d080" : "#ff8a8a";
         context.shadowBlur = glowSize * (milestone === 100 ? 2.2 : 1.5);
@@ -360,7 +378,7 @@ function drawWeb(canvas, habits, totals, stats, todayEntries, time = 0, flash = 
 
     const labelColor = isNew
       ? `rgba(240,208,128,${count > 0 ? Math.min(0.52 + Math.log(count + 1) * 0.12, 0.98) : 0.4})`
-      : `rgba(255,168,168,${count > 0 ? Math.min(0.5 + Math.log(count + 1) * 0.11, 0.96) : 0.38})`;
+      : `rgba(255,168,168,${count > 0 ? Math.min((0.5 + Math.log(count + 1) * 0.11) * decay, 0.96) : 0.38 * decay})`;
     drawTextWithHalo(context, spoke.label, clampedLabelX, labelY, {
       font: `${count > 10 ? "600" : "500"} ${isCompact ? 9.25 : 10.75}px serif`,
       align: labelAlign,
@@ -544,6 +562,7 @@ export default function Home() {
         canvasRef.current,
         liveState.habits,
         liveState.totals,
+        liveState.lastSeen,
         liveState.stats,
         liveState.todayEntries,
         frameTime,
