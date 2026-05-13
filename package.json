@@ -1,0 +1,17 @@
+{
+  "name": "tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Private 1-year habit tracker for netz.ichwillsicherheit.de",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "next": "15.3.3",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "sql.js": "^1.13.0"
+  }
+}

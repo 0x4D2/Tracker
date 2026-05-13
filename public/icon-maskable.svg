@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#060606"/>
+  <circle cx="256" cy="256" r="140" fill="none" stroke="#c9a84c" stroke-width="0.8" opacity="0.15"/>
+  <circle cx="256" cy="256" r="100" fill="none" stroke="#c9a84c" stroke-width="0.8" opacity="0.12"/>
+  <circle cx="256" cy="256" r="60"  fill="none" stroke="#c9a84c" stroke-width="0.8" opacity="0.10"/>
+  <line x1="256" y1="256" x2="190" y2="116" stroke="#c9a84c" stroke-width="2.5" opacity="0.7"/>
+  <line x1="256" y1="256" x2="256" y2="110" stroke="#c9a84c" stroke-width="2.5" opacity="0.7"/>
+  <line x1="256" y1="256" x2="326" y2="116" stroke="#c9a84c" stroke-width="2.5" opacity="0.7"/>
+  <line x1="256" y1="256" x2="390" y2="210" stroke="#c9a84c" stroke-width="2"   opacity="0.6"/>
+  <line x1="256" y1="256" x2="146" y2="340" stroke="#cc4444" stroke-width="2"   opacity="0.6"/>
+  <line x1="256" y1="256" x2="226" y2="400" stroke="#cc4444" stroke-width="2.5" opacity="0.7"/>
+  <line x1="256" y1="256" x2="296" y2="400" stroke="#cc4444" stroke-width="2"   opacity="0.6"/>
+  <circle cx="256" cy="256" r="22" fill="#c9a84c" opacity="0.15"/>
+  <circle cx="256" cy="256" r="14" fill="#c9a84c" opacity="0.5"/>
+  <circle cx="256" cy="256" r="8"  fill="#f0d080"/>
+</svg>
