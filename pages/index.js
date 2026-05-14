@@ -7,6 +7,7 @@ const INITIAL_STATE = {
   totals: {},
   todayEntries: [],
   recentEntries: [],
+  weekData: [],
   lastSeen: {},
   stats: {
     daysLeft: 365,
@@ -63,6 +64,7 @@ function drawTextWithHalo(context, text, x, y, {
   context.fillText(text, x, y);
   context.restore();
 }
+
 
 function oldHabitDecay(lastSeenDate) {
   if (!lastSeenDate) return 0.18;
@@ -179,6 +181,8 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, time = 0
   context.fillStyle = atmosphere;
   context.fillRect(0, 0, size, size);
 
+
+
   const vignette = context.createRadialGradient(centerX, centerY, size * 0.12, centerX, centerY, size * 0.76);
   vignette.addColorStop(0, "rgba(0,0,0,0)");
   vignette.addColorStop(0.7, "rgba(0,0,0,0.22)");
@@ -190,6 +194,20 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, time = 0
     const ringRadius = (ring / rings) * baseRadius;
     const ringAlpha = 0.06 + (ring / rings) * 0.04;
 
+    // vollständiges Netz — alle Spokes verbunden, Lücke mit Mischton
+    context.beginPath();
+    spokes.forEach((spoke, index) => {
+      const x = centerX + Math.cos(spoke.radians) * ringRadius;
+      const y = centerY + Math.sin(spoke.radians) * ringRadius;
+      if (index === 0) context.moveTo(x, y);
+      else context.lineTo(x, y);
+    });
+    context.closePath();
+    context.strokeStyle = `rgba(130,100,60,${ringAlpha})`;
+    context.lineWidth = 0.7;
+    context.stroke();
+
+    // Zonen-Overlay: gold für new, rot für old
     for (const zone of ["new", "old"]) {
       const zoneSpokes = spokes.filter((s) => s.type === zone);
       if (zoneSpokes.length < 2) continue;
@@ -200,8 +218,10 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, time = 0
         if (index === 0) context.moveTo(x, y);
         else context.lineTo(x, y);
       });
-      context.strokeStyle = `rgba(150,130,80,${ringAlpha})`;
-      context.lineWidth = 0.6;
+      context.strokeStyle = zone === "new"
+        ? `rgba(201,168,76,${ringAlpha * 1.4})`
+        : `rgba(204,88,88,${ringAlpha * 1.4})`;
+      context.lineWidth = 0.8;
       context.stroke();
     }
   }
@@ -417,7 +437,7 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, time = 0
 
   });
 
-  if (collapseFactor > 0.72) {
+if (collapseFactor > 0.72) {
     for (let i = 0; i < Math.min(3 + Math.floor(collapseFactor), 5); i += 1) {
       const arcRadius = baseRadius * (0.42 + i * 0.08);
       const arcStart = (145 + i * 10) * (Math.PI / 180);
@@ -563,6 +583,7 @@ export default function Home() {
     frameId = window.requestAnimationFrame(renderFrame);
     return () => window.cancelAnimationFrame(frameId);
   }, []);
+
 
   async function runAction(action, successMessage) {
     setBusy(true);
