@@ -619,6 +619,7 @@ export default function Home() {
   function handleRecord(habitId) {
     const habit = [...state.habits.new, ...state.habits.old].find((h) => h.id === habitId);
     flashRef.current = { habitId, startTime: Date.now() };
+    if (navigator.vibrate) navigator.vibrate(42);
     runAction(() => request("/api/entries", { method: "POST", body: JSON.stringify({ habitId }) }));
     if (habit) {
       setLastRecorded({ label: habit.label, type: habit.type });
@@ -700,7 +701,6 @@ export default function Home() {
         <div className="grain" />
 
         <header className="page-header">
-          <h1>Dein Netz</h1>
           <p className="page-date">{todayLabel}</p>
         </header>
 
@@ -720,10 +720,6 @@ export default function Home() {
             <strong className={`status-value ${state.stats.direction.tone}`}>{loading ? "—" : state.stats.direction.symbol}</strong>
             <span className="status-meta">{loading ? "" : state.stats.direction.text}</span>
           </article>
-        </section>
-
-        <section className="canvas-wrap">
-          <canvas ref={canvasRef} className="web-canvas" aria-label="Netz-Visualisierung" />
         </section>
 
         {error ? <p className="feedback error">{error}</p> : null}
@@ -760,7 +756,13 @@ export default function Home() {
             onRecord={handleRecord}
             onRemove={handleRemoveHabit}
           />
+        </section>
 
+        <section className="canvas-wrap">
+          <canvas ref={canvasRef} className="web-canvas" aria-label="Netz-Visualisierung" />
+        </section>
+
+        <section className="controls">
           <section className="note-section">
             <p className="section-label muted">
               Notiz
@@ -846,6 +848,7 @@ function TrackerSection({
   onRemove,
 }) {
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   function handleDeleteClick(habitId) {
     if (pendingDelete === habitId) {
@@ -857,12 +860,27 @@ function TrackerSection({
     }
   }
 
+  function handleSubmit() {
+    onSubmit();
+    setAddOpen(false);
+  }
+
   return (
     <section>
-      <p className={`section-label ${tone}`}>
-        {label}
-        {savedLabel ? <span className="note-saved">{savedLabel}</span> : null}
-      </p>
+      <div className="section-label-row">
+        <p className={`section-label ${tone}`}>
+          {label}
+          {savedLabel ? <span className="note-saved">{savedLabel}</span> : null}
+        </p>
+        <button
+          type="button"
+          className={`add-toggle ${tone}${addOpen ? " add-toggle--open" : ""}`}
+          onClick={() => setAddOpen((o) => !o)}
+          aria-label="Faden hinzufügen"
+        >
+          {addOpen ? "✕" : "+ Faden"}
+        </button>
+      </div>
 
       <div className="habit-grid">
         {habits.map((habit) => (
@@ -891,23 +909,22 @@ function TrackerSection({
         ))}
       </div>
 
-      <div className="add-row">
-        <input
-          className="add-input"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={tone === "new" ? "Neuen Strang hinzufügen…" : "Alten Strang hinzufügen…"}
-          maxLength={40}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              onSubmit();
-            }
-          }}
-        />
-        <button type="button" className={`add-btn ${tone}`} onClick={onSubmit} disabled={disabled}>
-          {tone === "new" ? "+ Neues Ich" : "+ Altes Ich"}
-        </button>
-      </div>
+      {addOpen && (
+        <div className="add-row">
+          <input
+            className="add-input"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            placeholder={tone === "new" ? "Neuen Strang hinzufügen…" : "Alten Strang hinzufügen…"}
+            maxLength={40}
+            autoFocus
+            onKeyDown={(event) => { if (event.key === "Enter") handleSubmit(); }}
+          />
+          <button type="button" className={`add-btn ${tone}`} onClick={handleSubmit} disabled={disabled}>
+            Hinzufügen
+          </button>
+        </div>
+      )}
     </section>
   );
 }
