@@ -188,20 +188,22 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, time = 0
 
   for (let ring = 1; ring <= rings; ring += 1) {
     const ringRadius = (ring / rings) * baseRadius;
-    context.beginPath();
-    spokes.forEach((spoke, index) => {
-      const x = centerX + Math.cos(spoke.radians) * ringRadius;
-      const y = centerY + Math.sin(spoke.radians) * ringRadius;
-      if (index === 0) {
-        context.moveTo(x, y);
-      } else {
-        context.lineTo(x, y);
-      }
-    });
-    context.closePath();
-    context.strokeStyle = `rgba(150,130,80,${0.06 + (ring / rings) * 0.04})`;
-    context.lineWidth = 0.6;
-    context.stroke();
+    const ringAlpha = 0.06 + (ring / rings) * 0.04;
+
+    for (const zone of ["new", "old"]) {
+      const zoneSpokes = spokes.filter((s) => s.type === zone);
+      if (zoneSpokes.length < 2) continue;
+      context.beginPath();
+      zoneSpokes.forEach((spoke, index) => {
+        const x = centerX + Math.cos(spoke.radians) * ringRadius;
+        const y = centerY + Math.sin(spoke.radians) * ringRadius;
+        if (index === 0) context.moveTo(x, y);
+        else context.lineTo(x, y);
+      });
+      context.strokeStyle = `rgba(150,130,80,${ringAlpha})`;
+      context.lineWidth = 0.6;
+      context.stroke();
+    }
   }
 
   const meshFractions = [0.24, 0.38, 0.52, 0.66];
@@ -256,9 +258,11 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, time = 0
     const fractionB = (ring + 2) / rings;
 
     for (let index = 0; index < spokes.length; index += 1) {
-      const nextIndex = (index + 1) % spokes.length;
+      const nextIndex = index + 1;
+      if (nextIndex >= spokes.length) continue;
       const current = spokes[index];
       const next = spokes[nextIndex];
+      if (current.type !== next.type) continue;
 
       const x1 = centerX + Math.cos(current.radians) * (fractionA * baseRadius);
       const y1 = centerY + Math.sin(current.radians) * (fractionA * baseRadius);
@@ -426,22 +430,6 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, time = 0
     }
   }
 
-  // subtle separator arc in the gap between new (ends ~35°) and old (starts ~65°)
-  const gapMid = (35 + 65) / 2;
-  const gapHalf = 14;
-  context.beginPath();
-  context.arc(centerX, centerY, baseRadius * 0.96,
-    ((gapMid - gapHalf) * Math.PI) / 180,
-    ((gapMid + gapHalf) * Math.PI) / 180, false);
-  context.strokeStyle = "rgba(160,130,70,0.18)";
-  context.lineWidth = 0.8;
-  context.stroke();
-
-  context.beginPath();
-  context.arc(centerX, centerY, baseRadius * 0.15, (30 * Math.PI) / 180, (210 * Math.PI) / 180, false);
-  context.strokeStyle = "rgba(100,80,40,0.08)";
-  context.lineWidth = 0.5;
-  context.stroke();
 
   drawCenter(context, centerX, centerY, isCompact, stats?.direction?.tone, todaySummary, time);
 }
@@ -508,6 +496,8 @@ export default function Home() {
   const [drafts, setDrafts] = useState({ new: "", old: "" });
   const [todayLabel, setTodayLabel] = useState("");
   const [note, setNote] = useState("");
+  const [noteSaved, setNoteSaved] = useState(false);
+  const [lastRecorded, setLastRecorded] = useState(null);
   const completedToday = isDevMode ? new Set() : new Set(state.todayEntries.map((entry) => entry.habitId));
 
   useEffect(() => {
@@ -606,10 +596,13 @@ export default function Home() {
   }
 
   function handleRecord(habitId) {
+    const habit = [...state.habits.new, ...state.habits.old].find((h) => h.id === habitId);
     flashRef.current = { habitId, startTime: Date.now() };
-    runAction(
-      () => request("/api/entries", { method: "POST", body: JSON.stringify({ habitId }) })
-    );
+    runAction(() => request("/api/entries", { method: "POST", body: JSON.stringify({ habitId }) }));
+    if (habit) {
+      setLastRecorded({ label: habit.label, type: habit.type });
+      setTimeout(() => setLastRecorded(null), 3000);
+    }
   }
 
   function handleDeleteEntry(entryId) {
@@ -665,6 +658,8 @@ export default function Home() {
   async function handleNoteSave(content) {
     try {
       await request("/api/notes", { method: "POST", body: JSON.stringify({ content }) });
+      setNoteSaved(true);
+      setTimeout(() => setNoteSaved(false), 3000);
     } catch {
       // note save failure is non-critical, silently ignore
     }
@@ -721,6 +716,7 @@ export default function Home() {
             habits={state.habits.new}
             totals={state.totals}
             completedToday={completedToday}
+            savedLabel={lastRecorded?.type === "new" ? lastRecorded.label : null}
             value={drafts.new}
             disabled={busy}
             onChange={(value) => setDrafts((current) => ({ ...current, new: value }))}
@@ -735,6 +731,7 @@ export default function Home() {
             habits={state.habits.old}
             totals={state.totals}
             completedToday={completedToday}
+            savedLabel={lastRecorded?.type === "old" ? lastRecorded.label : null}
             value={drafts.old}
             disabled={busy}
             onChange={(value) => setDrafts((current) => ({ ...current, old: value }))}
@@ -744,7 +741,10 @@ export default function Home() {
           />
 
           <section className="note-section">
-            <p className="section-label muted">Notiz</p>
+            <p className="section-label muted">
+              Notiz
+              {noteSaved ? <span className="note-saved">gespeichert</span> : null}
+            </p>
             <textarea
               className="note-input"
               value={note}
@@ -752,7 +752,7 @@ export default function Home() {
               onBlur={(e) => handleNoteSave(e.target.value)}
               placeholder="Gedanken zum heutigen Tag…"
               maxLength={2000}
-              rows={3}
+              rows={6}
             />
           </section>
 
@@ -816,6 +816,7 @@ function TrackerSection({
   habits,
   totals,
   completedToday,
+  savedLabel,
   value,
   disabled,
   onChange,
@@ -837,7 +838,10 @@ function TrackerSection({
 
   return (
     <section>
-      <p className={`section-label ${tone}`}>{label}</p>
+      <p className={`section-label ${tone}`}>
+        {label}
+        {savedLabel ? <span className="note-saved">{savedLabel}</span> : null}
+      </p>
 
       <div className="habit-grid">
         {habits.map((habit) => (

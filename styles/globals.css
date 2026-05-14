@@ -172,6 +172,7 @@ button {
 .controls {
   width: 100%;
   max-width: 520px;
+  margin: 0 auto;
   padding-bottom: 20px;
 }
 
@@ -719,13 +720,17 @@ button {
     padding-top: 2px;
   }
 
-  .add-row,
-  .bottom-row {
+  .add-row {
     flex-direction: column;
   }
 
-  .add-btn,
-  .bottom-row .util-btn {
+  .add-btn {
     width: 100%;
+  }
+}
+
+@media (max-width: 420px) {
+  .habit-grid {
+    grid-template-columns: 1fr;
   }
 }
