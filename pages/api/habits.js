@@ -3,7 +3,7 @@ import { addHabit, removeHabit } from "../../lib/tracker";
 export default async function handler(req, res) {
   if (req.method === "POST") {
     try {
-      const nextState = await addHabit(req.body?.type, req.body?.label);
+      const nextState = await addHabit(req.body?.type, req.body?.label, req.body?.category ?? null);
       return res.status(200).json(nextState);
     } catch (error) {
       return res.status(400).json({ message: error.message });

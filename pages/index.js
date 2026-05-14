@@ -9,6 +9,8 @@ const INITIAL_STATE = {
   recentEntries: [],
   weekData: [],
   lastSeen: {},
+  score: { score: 0, breakdown: [], werktag: true, kategorie: "neutral" },
+  callStreak: 0,
   stats: {
     daysLeft: 365,
     daysTotal: 365,
@@ -66,6 +68,26 @@ function drawTextWithHalo(context, text, x, y, {
 }
 
 
+function drawFire(ctx, x, y, time, streak) {
+  const intensity = Math.min(0.5 + streak * 0.1, 1.5);
+  const particles = Math.min(6 + streak, 14);
+  for (let i = 0; i < particles; i++) {
+    const phase = (time * 0.0018 + i * 0.63) % 1;
+    const px = x + Math.sin(time * 0.0025 + i * 2.4) * 3.5 * intensity;
+    const py = y - phase * 22 * intensity;
+    const size = (1 - phase) * 3.2 * intensity;
+    const alpha = (1 - phase) * 0.85;
+    const green = Math.floor(40 + phase * 120);
+    ctx.beginPath();
+    ctx.arc(px, py, size, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,${green},0,${alpha})`;
+    ctx.shadowColor = "#ff4400";
+    ctx.shadowBlur = 10 * intensity;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+  }
+}
+
 function oldHabitDecay(lastSeenDate) {
   if (!lastSeenDate) return 0.18;
   const today = new Date();
@@ -81,7 +103,7 @@ function oldHabitDecay(lastSeenDate) {
   return 0.1;
 }
 
-function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, time = 0, flash = null) {
+function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStreak = 0, time = 0, flash = null) {
   if (!canvas) {
     return;
   }
@@ -451,6 +473,14 @@ if (collapseFactor > 0.72) {
   }
 
 
+  // Feuer am AKQUISE-Spoke wenn Streak aktiv
+  if (callStreak >= 1) {
+    const akquiseSpoke = spokes.find((s) => s.category === "AKQUISE");
+    if (akquiseSpoke) {
+      drawFire(context, akquiseSpoke.endX, akquiseSpoke.endY, time, callStreak);
+    }
+  }
+
   drawCenter(context, centerX, centerY, isCompact, stats?.direction?.tone, todaySummary, time);
 }
 
@@ -513,12 +543,16 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [drafts, setDrafts] = useState({ new: "", old: "" });
+  const [drafts, setDrafts] = useState({ new: "", old: "", newCat: null, oldCat: null });
   const [todayLabel, setTodayLabel] = useState("");
   const [note, setNote] = useState("");
   const [noteSaved, setNoteSaved] = useState(false);
   const [lastRecorded, setLastRecorded] = useState(null);
   const completedToday = isDevMode ? new Set() : new Set(state.todayEntries.map((entry) => entry.habitId));
+  const todayCountPerHabit = state.todayEntries.reduce((acc, e) => {
+    acc[e.habitId] = (acc[e.habitId] || 0) + 1;
+    return acc;
+  }, {});
 
   useEffect(() => {
     stateRef.current = state;
@@ -575,6 +609,7 @@ export default function Home() {
         liveState.lastSeen,
         liveState.stats,
         liveState.todayEntries,
+        liveState.callStreak,
         frameTime,
         flashRef.current
       );
@@ -606,14 +641,12 @@ export default function Home() {
 
   function handleAddHabit(type) {
     const label = drafts[type].trim();
-    if (!label) {
-      return;
-    }
-
+    if (!label) return;
+    const category = drafts[type === "new" ? "newCat" : "oldCat"];
     runAction(
-      () => request("/api/habits", { method: "POST", body: JSON.stringify({ type, label }) })
+      () => request("/api/habits", { method: "POST", body: JSON.stringify({ type, label, category }) })
     );
-    setDrafts((current) => ({ ...current, [type]: "" }));
+    setDrafts((current) => ({ ...current, [type]: "", [`${type === "new" ? "new" : "old"}Cat`]: null }));
   }
 
   function handleRecord(habitId) {
@@ -726,6 +759,8 @@ export default function Home() {
         {message ? <p className="feedback success">{message}</p> : null}
         {isDevMode ? <p className="feedback success">Dev-Modus aktiv: Mehrfachklicks pro Tag sind erlaubt.</p> : null}
 
+        <ScoreCard score={state.score} callStreak={state.callStreak} loading={loading} />
+
         <section className="controls">
           <TrackerSection
             label="Neues Ich — Fäden stärken"
@@ -733,8 +768,11 @@ export default function Home() {
             habits={state.habits.new}
             totals={state.totals}
             completedToday={completedToday}
+            todayCount={todayCountPerHabit}
             savedLabel={lastRecorded?.type === "new" ? lastRecorded.label : null}
             value={drafts.new}
+            category={drafts.newCat}
+            onCategoryChange={(cat) => setDrafts((c) => ({ ...c, newCat: cat }))}
             disabled={busy}
             onChange={(value) => setDrafts((current) => ({ ...current, new: value }))}
             onSubmit={() => handleAddHabit("new")}
@@ -748,8 +786,11 @@ export default function Home() {
             habits={state.habits.old}
             totals={state.totals}
             completedToday={completedToday}
+            todayCount={todayCountPerHabit}
             savedLabel={lastRecorded?.type === "old" ? lastRecorded.label : null}
             value={drafts.old}
+            category={drafts.oldCat}
+            onCategoryChange={(cat) => setDrafts((c) => ({ ...c, oldCat: cat }))}
             disabled={busy}
             onChange={(value) => setDrafts((current) => ({ ...current, old: value }))}
             onSubmit={() => handleAddHabit("old")}
@@ -839,8 +880,11 @@ function TrackerSection({
   habits,
   totals,
   completedToday,
+  todayCount,
   savedLabel,
   value,
+  category,
+  onCategoryChange,
   disabled,
   onChange,
   onSubmit,
@@ -884,47 +928,151 @@ function TrackerSection({
 
       <div className="habit-grid">
         {habits.map((habit) => (
-          <article className={`habit-card ${tone} ${completedToday.has(habit.id) ? "done" : ""}`} key={habit.id}>
-            <button
-              type="button"
-              className="habit-main"
-              onClick={() => { setPendingDelete(null); onRecord(habit.id); }}
-              disabled={disabled || completedToday.has(habit.id)}
-              aria-label={completedToday.has(habit.id) ? `${habit.label} heute bereits eingetragen` : habit.label}
-            >
-              <span className="habit-dot" />
-              <span className="habit-label">{habit.label}</span>
-              <span className="habit-count">×{totals[habit.id] || 0}</span>
-            </button>
-            <button
-              type="button"
-              className={`delete-btn${pendingDelete === habit.id ? " delete-btn--confirm" : ""}`}
-              onClick={() => handleDeleteClick(habit.id)}
-              disabled={disabled}
-              aria-label={pendingDelete === habit.id ? `${habit.label} wirklich löschen` : `${habit.label} löschen`}
-            >
-              {pendingDelete === habit.id ? "?" : "✕"}
-            </button>
-          </article>
+          <HabitCard
+            key={habit.id}
+            habit={habit}
+            tone={tone}
+            done={completedToday.has(habit.id)}
+            todayN={todayCount[habit.id] || 0}
+            total={totals[habit.id] || 0}
+            pendingDelete={pendingDelete}
+            disabled={disabled}
+            onRecord={() => { setPendingDelete(null); onRecord(habit.id); }}
+            onDelete={() => handleDeleteClick(habit.id)}
+          />
         ))}
       </div>
 
       {addOpen && (
-        <div className="add-row">
-          <input
-            className="add-input"
-            value={value}
-            onChange={(event) => onChange(event.target.value)}
-            placeholder={tone === "new" ? "Neuen Strang hinzufügen…" : "Alten Strang hinzufügen…"}
-            maxLength={40}
-            autoFocus
-            onKeyDown={(event) => { if (event.key === "Enter") handleSubmit(); }}
-          />
-          <button type="button" className={`add-btn ${tone}`} onClick={handleSubmit} disabled={disabled}>
-            Hinzufügen
-          </button>
+        <div className="add-open-block">
+          <div className="cat-picker">
+            {["HYGIENE", "AKQUISE", "SABOTAGE"].map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                className={`cat-btn cat-btn--${cat.toLowerCase()}${category === cat ? " cat-btn--active" : ""}`}
+                onClick={() => onCategoryChange(category === cat ? null : cat)}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+          <div className="add-row">
+            <input
+              className="add-input"
+              value={value}
+              onChange={(event) => onChange(event.target.value)}
+              placeholder={tone === "new" ? "Neuen Strang hinzufügen…" : "Alten Strang hinzufügen…"}
+              maxLength={40}
+              autoFocus
+              onKeyDown={(event) => { if (event.key === "Enter") handleSubmit(); }}
+            />
+            <button type="button" className={`add-btn ${tone}`} onClick={handleSubmit} disabled={disabled}>
+              Hinzufügen
+            </button>
+          </div>
         </div>
       )}
     </section>
+  );
+}
+
+const SCORE_SYMBOLS = {
+  gold:    "↗↗↗",
+  gruen2:  "↗↗",
+  gruen:   "↗",
+  gelb:    "↗",
+  neutral: "→",
+  rot:     "↘",
+  tiefrot: "↘↘",
+};
+const SCORE_COLORS = {
+  gold:    "#f0d080",
+  gruen2:  "#7ec87e",
+  gruen:   "#5aaa6a",
+  gelb:    "#a89040",
+  neutral: "#5a4f3a",
+  rot:     "#cc4444",
+  tiefrot: "#992222",
+};
+const CAT_LABELS = { AKQUISE: "Akquise ×5", HYGIENE: "Hygiene ×1", SABOTAGE: "Sabotage ×2" };
+
+function HabitCard({ habit, tone, done, todayN, total, pendingDelete, disabled, onRecord, onDelete }) {
+  const isAkquise = habit.category === "AKQUISE";
+  const blocked = done && !isAkquise;
+  return (
+    <article className={`habit-card ${tone} ${blocked ? "done" : ""}`}>
+      <button
+        type="button"
+        className="habit-main"
+        onClick={onRecord}
+        disabled={disabled || blocked}
+        aria-label={habit.label}
+      >
+        <span className="habit-dot" />
+        <span className="habit-label">{habit.label}</span>
+        {isAkquise
+          ? <span className="habit-count akquise-count">{todayN > 0 ? `${todayN}×` : "—"}</span>
+          : <span className="habit-count">×{total}</span>
+        }
+      </button>
+      <button
+        type="button"
+        className={`delete-btn${pendingDelete === habit.id ? " delete-btn--confirm" : ""}`}
+        onClick={onDelete}
+        disabled={disabled}
+        aria-label={pendingDelete === habit.id ? `${habit.label} wirklich löschen` : `${habit.label} löschen`}
+      >
+        {pendingDelete === habit.id ? "?" : "✕"}
+      </button>
+    </article>
+  );
+}
+
+function ScoreCard({ score: scoreData, callStreak, loading }) {
+  const [open, setOpen] = useState(false);
+  if (loading) return null;
+  const { score, breakdown, werktag, kategorie, akquiseCount } = scoreData;
+  const color = SCORE_COLORS[kategorie] || SCORE_COLORS.neutral;
+  const symbol = SCORE_SYMBOLS[kategorie] || "→";
+
+  const nextHint = werktag && akquiseCount === 0
+    ? "1 Anruf → Grün möglich"
+    : werktag && akquiseCount < 3
+    ? `${3 - akquiseCount} Anrufe → ↗↗`
+    : werktag && akquiseCount < 5
+    ? `${5 - akquiseCount} Anrufe → ↗↗↗`
+    : null;
+
+  return (
+    <div className="score-card" onClick={() => setOpen((o) => !o)} role="button" aria-expanded={open}>
+      <div className="score-main">
+        <span className="score-label">{werktag ? "Tages-Score" : "Wochenende"}</span>
+        <span className="score-value" style={{ color }}>{score > 0 ? `+${score}` : score}</span>
+        <span className="score-symbol" style={{ color }}>{symbol}</span>
+        {callStreak >= 2 && (
+          <span className="score-streak-inline">
+            <span className="fire-emoji">🔥</span>
+            <span className="score-streak-count">{callStreak}</span>
+          </span>
+        )}
+      </div>
+      {nextHint && !open && (
+        <p className="score-hint">{nextHint}</p>
+      )}
+      {open && breakdown.length > 0 && (
+        <div className="score-breakdown">
+          {breakdown.map((item, i) => (
+            <div key={i} className="score-row">
+              <span className="score-row-label">{item.label}</span>
+              <span className="score-row-cat">{CAT_LABELS[item.category]}</span>
+              <span className="score-row-pts" style={{ color: item.points >= 0 ? SCORE_COLORS.gelb : SCORE_COLORS.rot }}>
+                {item.points > 0 ? `+${item.points}` : item.points}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
