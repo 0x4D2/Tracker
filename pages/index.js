@@ -538,6 +538,11 @@ export default function Home() {
   const canvasRef = useRef(null);
   const stateRef = useRef(INITIAL_STATE);
   const flashRef = useRef(null);
+  const noteValueRef = useRef("");
+  const noteSaveTimerRef = useRef(null);
+  const noteStatusTimerRef = useRef(null);
+  const noteLoadedRef = useRef(false);
+  const lastSavedNoteRef = useRef("");
   const [state, setState] = useState(INITIAL_STATE);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -546,7 +551,7 @@ export default function Home() {
   const [drafts, setDrafts] = useState({ new: "", old: "", newCat: null, oldCat: null });
   const [todayLabel, setTodayLabel] = useState("");
   const [note, setNote] = useState("");
-  const [noteSaved, setNoteSaved] = useState(false);
+  const [noteSaveState, setNoteSaveState] = useState("idle");
   const [lastRecorded, setLastRecorded] = useState(null);
   const completedToday = isDevMode ? new Set() : new Set(state.todayEntries.map((entry) => entry.habitId));
   const todayCountPerHabit = state.todayEntries.reduce((acc, e) => {
@@ -559,6 +564,58 @@ export default function Home() {
   }, [state]);
 
   useEffect(() => {
+    noteValueRef.current = note;
+  }, [note]);
+
+  function clearNoteStatusTimer() {
+    if (noteStatusTimerRef.current) {
+      window.clearTimeout(noteStatusTimerRef.current);
+      noteStatusTimerRef.current = null;
+    }
+  }
+
+  function scheduleSavedBadgeReset() {
+    clearNoteStatusTimer();
+    noteStatusTimerRef.current = window.setTimeout(() => {
+      setNoteSaveState((current) => (current === "saved" ? "idle" : current));
+      noteStatusTimerRef.current = null;
+    }, 2500);
+  }
+
+  async function persistNote(content) {
+    const normalizedContent = String(content || "").slice(0, 2000);
+
+    if (!noteLoadedRef.current || normalizedContent === lastSavedNoteRef.current) {
+      return true;
+    }
+
+    if (noteSaveTimerRef.current) {
+      window.clearTimeout(noteSaveTimerRef.current);
+      noteSaveTimerRef.current = null;
+    }
+
+    clearNoteStatusTimer();
+    setNoteSaveState("saving");
+
+    try {
+      const payload = await request("/api/notes", {
+        method: "POST",
+        body: JSON.stringify({ content: normalizedContent }),
+      });
+
+      lastSavedNoteRef.current = payload.content;
+      noteValueRef.current = payload.content;
+      setNote((current) => (current === payload.content ? current : payload.content));
+      setNoteSaveState("saved");
+      scheduleSavedBadgeReset();
+      return true;
+    } catch {
+      setNoteSaveState("error");
+      return false;
+    }
+  }
+
+  useEffect(() => {
     let active = true;
 
     request("/api/state")
@@ -568,6 +625,9 @@ export default function Home() {
         }
         setState(payload);
         setNote(payload.note || "");
+        lastSavedNoteRef.current = payload.note || "";
+        noteLoadedRef.current = true;
+        setNoteSaveState("idle");
       })
       .catch((requestError) => {
         if (!active) {
@@ -589,6 +649,43 @@ export default function Home() {
   useEffect(() => {
     setTodayLabel(formatHeaderDate());
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (noteSaveTimerRef.current) {
+        window.clearTimeout(noteSaveTimerRef.current);
+      }
+      clearNoteStatusTimer();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!noteLoadedRef.current) {
+      return undefined;
+    }
+
+    if (noteSaveTimerRef.current) {
+      window.clearTimeout(noteSaveTimerRef.current);
+      noteSaveTimerRef.current = null;
+    }
+
+    if (note === lastSavedNoteRef.current) {
+      return undefined;
+    }
+
+    setNoteSaveState("pending");
+    noteSaveTimerRef.current = window.setTimeout(() => {
+      noteSaveTimerRef.current = null;
+      void persistNote(noteValueRef.current);
+    }, 900);
+
+    return () => {
+      if (noteSaveTimerRef.current) {
+        window.clearTimeout(noteSaveTimerRef.current);
+        noteSaveTimerRef.current = null;
+      }
+    };
+  }, [note]);
 
   useEffect(() => {
     let frameId;
@@ -628,6 +725,12 @@ export default function Home() {
     try {
       const payload = await action();
       setState(payload);
+      if (typeof payload.note === "string" && noteValueRef.current === lastSavedNoteRef.current) {
+        setNote(payload.note);
+        noteValueRef.current = payload.note;
+        lastSavedNoteRef.current = payload.note;
+        setNoteSaveState("idle");
+      }
       if (successMessage) {
         setMessage(successMessage);
         setTimeout(() => setMessage(""), 3000);
@@ -710,15 +813,15 @@ export default function Home() {
     reader.readAsText(file);
   }
 
-  async function handleNoteSave(content) {
-    try {
-      await request("/api/notes", { method: "POST", body: JSON.stringify({ content }) });
-      setNoteSaved(true);
-      setTimeout(() => setNoteSaved(false), 3000);
-    } catch {
-      // note save failure is non-critical, silently ignore
-    }
-  }
+  const noteStatusLabel = noteSaveState === "pending"
+    ? "ungespeichert"
+    : noteSaveState === "saving"
+    ? "speichert..."
+    : noteSaveState === "saved"
+    ? "gespeichert"
+    : noteSaveState === "error"
+    ? "Speichern fehlgeschlagen"
+    : "";
 
   return (
     <>
@@ -807,13 +910,13 @@ export default function Home() {
           <section className="note-section">
             <p className="section-label muted">
               Notiz
-              {noteSaved ? <span className="note-saved">gespeichert</span> : null}
+              {noteStatusLabel ? <span className={`note-status note-status--${noteSaveState}`}>{noteStatusLabel}</span> : null}
             </p>
             <textarea
               className="note-input"
               value={note}
               onChange={(e) => setNote(e.target.value)}
-              onBlur={(e) => handleNoteSave(e.target.value)}
+              onBlur={() => { void persistNote(noteValueRef.current); }}
               placeholder="Gedanken zum heutigen Tag…"
               maxLength={2000}
               rows={6}
@@ -848,6 +951,9 @@ export default function Home() {
           </section>
 
           <div className="bottom-row">
+            <Link href="/statistik" className="util-btn" style={{ textAlign: "center" }}>
+              Statistik
+            </Link>
             <Link href="/verlauf" className="util-btn" style={{ textAlign: "center" }}>
               Verlauf
             </Link>
@@ -1045,7 +1151,7 @@ function ScoreCard({ score: scoreData, callStreak, loading }) {
     : null;
 
   return (
-    <div className="score-card" onClick={() => setOpen((o) => !o)} role="button" aria-expanded={open}>
+    <button type="button" className="score-card" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
       <div className="score-main">
         <span className="score-label">{werktag ? "Tages-Score" : "Wochenende"}</span>
         <span className="score-value" style={{ color }}>{score > 0 ? `+${score}` : score}</span>
@@ -1073,6 +1179,6 @@ function ScoreCard({ score: scoreData, callStreak, loading }) {
           ))}
         </div>
       )}
-    </div>
+    </button>
   );
 }
