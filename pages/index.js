@@ -541,6 +541,7 @@ export default function Home() {
   const stateRef = useRef(INITIAL_STATE);
   const flashRef = useRef(null);
   const noteValueRef = useRef("");
+  const noteInputRef = useRef(null);
   const noteSaveTimerRef = useRef(null);
   const noteStatusTimerRef = useRef(null);
   const noteLoadedRef = useRef(false);
@@ -926,6 +927,7 @@ export default function Home() {
               {noteStatusLabel ? <span className={`note-status note-status--${noteSaveState}`}>{noteStatusLabel}</span> : null}
             </p>
             <textarea
+              ref={noteInputRef}
               className="note-input"
               value={note}
               onChange={(e) => setNote(e.target.value)}
