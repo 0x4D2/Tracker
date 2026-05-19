@@ -1,4 +1,5 @@
-import { resetAll, resetDay } from "../../lib/tracker";
+import { resetAll, resetDay, todayKey } from "../../lib/tracker";
+import { recalculateStarDays } from "../../lib/stars";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -10,7 +11,9 @@ export default async function handler(req, res) {
       return res.status(200).json(await resetAll());
     }
 
-    return res.status(200).json(await resetDay());
+    const nextState = await resetDay();
+    await recalculateStarDays(todayKey());
+    return res.status(200).json(nextState);
   } catch (error) {
     return res.status(400).json({ message: error.message });
   }
