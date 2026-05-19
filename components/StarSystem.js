@@ -169,6 +169,7 @@ function StarDetail({ star, onClose, onRefresh }) {
           <p className="star-fill-label">
             {star.completed_days} von {star.total_days} Tagen vollständig — {star.fill_percent}%
             {star.active ? " ★" : ""}
+            {star.streak > 0 && <span className="star-streak-badge"> · 🔥 {star.streak} Tage am Stück</span>}
           </p>
         </div>
 
@@ -314,6 +315,10 @@ export default function StarSystem({ refreshKey = 0 }) {
 
   const selectedStar = selected !== null ? stars.find((s) => s.number === selected) : null;
   const activeCount = stars.filter((s) => s.active).length;
+  const focusStar = stars.find((s) => s.unlocked && s.habits.length > 0) || stars.find((s) => s.unlocked);
+  const focusDone = focusStar ? focusStar.habits.filter((h) => h.done_today).length : 0;
+  const focusTotal = focusStar ? focusStar.habits.length : 0;
+  const focusComplete = focusTotal > 0 && focusDone === focusTotal;
 
   return (
     <>
@@ -331,11 +336,14 @@ export default function StarSystem({ refreshKey = 0 }) {
                 "star-btn",
                 star.active ? "star-btn--active" : "",
                 !star.unlocked ? "star-btn--locked" : "",
+                star.unlocked && star.habits.length === 0 ? "star-btn--empty" : "",
               ].filter(Boolean).join(" ")}
               onClick={() => star.unlocked && setSelected(star.number)}
               disabled={!star.unlocked}
               title={star.unlocked
-                ? `${star.name || `Stern ${star.number}`} · ${star.fill_percent}%`
+                ? star.habits.length === 0
+                  ? `Stern ${star.number} — Fäden zuweisen`
+                  : `${star.name || `Stern ${star.number}`} · ${star.fill_percent}%`
                 : `Stern ${star.number} — gesperrt`}
               aria-pressed={selected === star.number}
             >
@@ -346,9 +354,24 @@ export default function StarSystem({ refreshKey = 0 }) {
                 locked={!star.unlocked}
               />
               <span className="star-num">{star.number}</span>
+              {star.unlocked && star.habits.length === 0 && (
+                <span className="star-setup-dot" aria-hidden="true" />
+              )}
             </button>
           ))}
         </div>
+
+        {focusStar && (
+          <p className={`star-today-hint${focusComplete ? " star-today-hint--done" : ""}`}>
+            {focusTotal === 0 ? (
+              <>Stern {focusStar.number} — <em>Fäden zuweisen um zu starten</em></>
+            ) : focusComplete ? (
+              <>{focusStar.name || `Stern ${focusStar.number}`} — heute vollständig ✓</>
+            ) : (
+              <>{focusStar.name || `Stern ${focusStar.number}`} — {focusDone}/{focusTotal} Fäden heute</>
+            )}
+          </p>
+        )}
       </section>
 
       {selectedStar && (

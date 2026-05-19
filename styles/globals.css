@@ -174,6 +174,50 @@ button {
   color: var(--gold);
 }
 
+.star-setup-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(201, 168, 76, 0.6);
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  animation: star-setup-pulse 2s ease-in-out infinite;
+}
+
+.star-btn--empty {
+  position: relative;
+}
+
+@keyframes star-setup-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.star-today-hint {
+  margin-top: 8px;
+  font-size: 0.74rem;
+  font-style: italic;
+  color: var(--muted);
+  text-align: center;
+}
+
+.star-today-hint em {
+  color: rgba(201, 168, 76, 0.5);
+  font-style: italic;
+}
+
+.star-today-hint--done {
+  color: var(--gold);
+  opacity: 0.85;
+}
+
+.star-streak-badge {
+  font-style: normal;
+  color: var(--gold);
+  opacity: 0.85;
+}
+
 /* ── Star Modal ───────────────────────────────────── */
 
 .star-overlay {
