@@ -1121,6 +1121,14 @@ const CAT_LABELS = { AKQUISE: "Akquise ×5", HYGIENE: "Hygiene ×1", SABOTAGE: "
 function HabitCard({ habit, tone, done, todayN, total, pendingDelete, disabled, onRecord, onDelete }) {
   const isAkquise = habit.category === "AKQUISE";
   const blocked = done && !isAkquise;
+  const statusLabel = tone === "new"
+    ? todayN > 0
+      ? todayN > 1 ? `${todayN}× heute` : "heute"
+      : "offen"
+    : todayN > 0
+    ? `${todayN}× passiert`
+    : "vermieden";
+
   return (
     <article className={`habit-card ${tone} ${blocked ? "done" : ""}`}>
       <button
@@ -1131,11 +1139,13 @@ function HabitCard({ habit, tone, done, todayN, total, pendingDelete, disabled, 
         aria-label={habit.label}
       >
         <span className="habit-dot" />
-        <span className="habit-label">{habit.label}</span>
-        {isAkquise
-          ? <span className="habit-count akquise-count">{todayN > 0 ? `${todayN}×` : "—"}</span>
-          : <span className="habit-count">×{total}</span>
-        }
+        <span className="habit-copy">
+          <span className="habit-label">{habit.label}</span>
+          <span className="habit-total">{`gesamt ${total}×`}</span>
+        </span>
+        <span className={`habit-status habit-status--${tone}${todayN > 0 ? " habit-status--active" : ""}${blocked ? " habit-status--done" : ""}`}>
+          {isAkquise && todayN > 0 ? `${todayN}× heute` : statusLabel}
+        </span>
       </button>
       <button
         type="button"
