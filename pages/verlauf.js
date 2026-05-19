@@ -257,6 +257,13 @@ export default function Verlauf() {
                   <article key={day.date} className="verlauf-day">
                     <div className="verlauf-day-header">
                       <h2 className="verlauf-date">{formatDate(day.date)}</h2>
+                      {day.completedStars?.length > 0 && (
+                        <span className="verlauf-stars" aria-label={`${day.completedStars.length} Stern${day.completedStars.length > 1 ? "e" : ""} vollständig`}>
+                          {day.completedStars.map((n) => (
+                            <span key={n} className="verlauf-star">★</span>
+                          ))}
+                        </span>
+                      )}
                       {day.noteTime && (
                         <span className="verlauf-time">{day.noteTime}</span>
                       )}
