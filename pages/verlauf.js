@@ -1,6 +1,6 @@
 import Head from "next/head";
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import NavTabs from "../components/NavTabs";
 
 function formatDate(dateStr) {
   const [year, month, day] = dateStr.split("-");
@@ -155,10 +155,7 @@ export default function Verlauf() {
       <main className="page-shell">
         <div className="grain" />
 
-        <header className="page-header">
-          <h1>Verlauf</h1>
-          <Link href="/" className="verlauf-back">← Zurück</Link>
-        </header>
+        <NavTabs />
 
         {error && <p className="feedback error">{error}</p>}
 

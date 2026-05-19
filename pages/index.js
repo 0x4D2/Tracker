@@ -2,6 +2,7 @@ import Head from "next/head";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import StarSystem from "../components/StarSystem";
+import NavTabs from "../components/NavTabs";
 
 const INITIAL_STATE = {
   habits: { new: [], old: [] },
@@ -848,6 +849,8 @@ export default function Home() {
       <main className="page-shell">
         <div className="grain" />
 
+        <NavTabs />
+
         <header className="page-header">
           <p className="page-date">{todayLabel}</p>
         </header>
@@ -966,13 +969,7 @@ export default function Home() {
           </section>
 
           <div className="bottom-row">
-            <Link href="/statistik" className="util-btn" style={{ textAlign: "center" }}>
-              Statistik
-            </Link>
-            <Link href="/verlauf" className="util-btn" style={{ textAlign: "center" }}>
-              Verlauf
-            </Link>
-            <button type="button" className="util-btn" onClick={handleExport} disabled={busy || loading}>
+<button type="button" className="util-btn" onClick={handleExport} disabled={busy || loading}>
               Export
             </button>
             <label className={`util-btn import-label${busy ? " import-label--disabled" : ""}`}>

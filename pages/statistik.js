@@ -1,7 +1,7 @@
 import Head from "next/head";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { buildDayDetail, buildMonthlyRadar, buildRiskForecast, buildStatsSnapshot, buildTrendWindow, buildWeekReview } from "../lib/insights";
+import NavTabs from "../components/NavTabs";
 
 const INITIAL_STATE = {
   habits: { new: [], old: [] },
@@ -100,10 +100,7 @@ export default function Statistik() {
       <main className="page-shell">
         <div className="grain" />
 
-        <header className="page-header">
-          <h1>Statistik</h1>
-          <Link href="/" className="verlauf-back">← Zurück</Link>
-        </header>
+        <NavTabs />
 
         {error ? <p className="feedback error">{error}</p> : null}
 
