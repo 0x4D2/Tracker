@@ -1,6 +1,5 @@
 import Head from "next/head";
 import Link from "next/link";
-import { useRouter } from "next/router";
 import { useEffect, useRef, useState } from "react";
 import StarSystem from "../components/StarSystem";
 
@@ -23,44 +22,6 @@ const INITIAL_STATE = {
 };
 
 const isDevMode = process.env.NEXT_PUBLIC_TRACKER_DEV_MODE === "true";
-const MOTION_BURST_MS = 9000;
-const ACTIVE_FPS = 30;
-const IDLE_FPS = 10;
-const REDUCED_FPS = 6;
-const REPLAY_STEP_MS = 720;
-const SCORE_TILT = {
-  gold: 1,
-  gruen2: 0.66,
-  gruen: 0.42,
-  gelb: 0.14,
-  neutral: 0,
-  rot: -0.48,
-  tiefrot: -0.92,
-};
-
-function clampNumber(value, min, max) {
-  return Math.min(Math.max(value, min), max);
-}
-
-function hasReplayFlag(value) {
-  if (Array.isArray(value)) {
-    return value.includes("1");
-  }
-
-  return value === "1";
-}
-
-function getVisualProfile(scoreData) {
-  const categoryTilt = SCORE_TILT[scoreData?.kategorie] || 0;
-  const numericTilt = clampNumber((Number(scoreData?.score) || 0) / 24, -1, 1) * 0.35;
-  const scoreTilt = clampNumber(categoryTilt + numericTilt, -1.2, 1.2);
-  const strength = Math.abs(scoreTilt);
-  return {
-    intensity: 0.9 + strength * 0.25,
-    motion: 0.85 + strength * 0.2,
-    scoreTilt,
-  };
-}
 
 function formatHeaderDate(date = new Date()) {
   return new Intl.DateTimeFormat("de-DE", {
@@ -109,14 +70,12 @@ function drawTextWithHalo(context, text, x, y, {
 }
 
 
-function drawFire(ctx, x, y, time, streak, motionLevel = 1) {
-  const liveMotion = 0.25 + motionLevel * 0.75;
-  const animationTime = time * liveMotion;
-  const intensity = Math.min((0.5 + streak * 0.1) * (0.65 + motionLevel * 0.35), 1.5);
-  const particles = Math.max(3, Math.round(Math.min(6 + streak, 14) * (0.45 + motionLevel * 0.55)));
+function drawFire(ctx, x, y, time, streak) {
+  const intensity = Math.min(0.5 + streak * 0.1, 1.5);
+  const particles = Math.min(6 + streak, 14);
   for (let i = 0; i < particles; i++) {
-    const phase = (animationTime * 0.0018 + i * 0.63) % 1;
-    const px = x + Math.sin(animationTime * 0.0025 + i * 2.4) * 3.5 * intensity;
+    const phase = (time * 0.0018 + i * 0.63) % 1;
+    const px = x + Math.sin(time * 0.0025 + i * 2.4) * 3.5 * intensity;
     const py = y - phase * 22 * intensity;
     const size = (1 - phase) * 3.2 * intensity;
     const alpha = (1 - phase) * 0.85;
@@ -146,205 +105,7 @@ function oldHabitDecay(lastSeenDate) {
   return 0.1;
 }
 
-function drawThreadFlow(context, centerX, centerY, spoke, count, time, motionLevel, isCompact, intensity = 1) {
-  const pulseCount = Math.max(1, Math.min(3, Math.round(Math.log(count + 1) * 1.15)));
-  const speed = 0.00005 + motionLevel * 0.000035 * intensity;
-
-  for (let index = 0; index < pulseCount; index += 1) {
-    const phase = (time * speed + index / pulseCount + spoke.radians * 0.08) % 1;
-    const progress = 0.16 + phase * 0.78;
-    const x = centerX + (spoke.endX - centerX) * progress;
-    const y = centerY + (spoke.endY - centerY) * progress;
-    const radius = ((isCompact ? 1.4 : 1.9) + (1 - phase) * 1.8) * (0.92 + intensity * 0.1);
-    const alpha = 0.12 + (1 - phase) * (0.28 + intensity * 0.06);
-
-    context.beginPath();
-    context.arc(x, y, radius, 0, Math.PI * 2);
-    context.fillStyle = `rgba(255,232,176,${alpha})`;
-    context.shadowColor = "#f0d080";
-    context.shadowBlur = 8 + (1 - phase) * (9 + intensity * 3);
-    context.fill();
-    context.shadowBlur = 0;
-  }
-}
-
-function drawCollapseShadow(context, centerX, centerY, baseRadius, collapseFactor, time, motionLevel, menace = 1) {
-  const sinkY = centerY + baseRadius * 0.52 + collapseFactor * 10;
-  const sinkWidth = baseRadius * (0.5 + collapseFactor * 0.08) * (0.96 + menace * 0.08);
-  const sinkHeight = baseRadius * (0.14 + collapseFactor * 0.035) * (0.94 + menace * 0.12);
-  const drift = Math.sin(time * (0.0005 + motionLevel * 0.0008 * menace)) * (2.2 + collapseFactor * 1.5 + menace * 1.2);
-
-  const sinkGlow = context.createRadialGradient(centerX, sinkY, baseRadius * 0.05, centerX, sinkY, baseRadius * 0.62);
-  sinkGlow.addColorStop(0, `rgba(204,68,68,${0.14 + collapseFactor * 0.08 + menace * 0.05})`);
-  sinkGlow.addColorStop(0.42, `rgba(126,22,22,${0.1 + collapseFactor * 0.05 + menace * 0.03})`);
-  sinkGlow.addColorStop(1, "rgba(0,0,0,0)");
-  context.beginPath();
-  context.ellipse(centerX, sinkY, sinkWidth, sinkHeight * 2.2, 0, 0, Math.PI * 2);
-  context.fillStyle = sinkGlow;
-  context.fill();
-
-  for (let index = 0; index < 4; index += 1) {
-    context.beginPath();
-    context.ellipse(
-      centerX + drift * (index - 1) * 0.7,
-      sinkY + index * 4,
-      sinkWidth * (1 - index * 0.12),
-      sinkHeight * (1 + index * 0.16),
-      0,
-      0,
-      Math.PI * 2
-    );
-    context.strokeStyle = `rgba(204,68,68,${0.08 + collapseFactor * 0.04 + menace * 0.03 - index * 0.012})`;
-    context.lineWidth = 0.8 + index * 0.12;
-    context.stroke();
-  }
-
-  for (let index = 0; index < 3; index += 1) {
-    const tendrilX = centerX + (index - 1) * sinkWidth * 0.4 + drift * 0.5;
-    context.beginPath();
-    context.moveTo(tendrilX, sinkY - sinkHeight * 0.35);
-    context.quadraticCurveTo(
-      tendrilX + drift * 1.6,
-      sinkY + sinkHeight * (0.8 + index * 0.3),
-      tendrilX - drift * 0.7,
-      sinkY + sinkHeight * (2.3 + index * 0.35)
-    );
-    context.strokeStyle = `rgba(126,22,22,${0.14 + collapseFactor * 0.04 + menace * 0.03 - index * 0.025})`;
-    context.lineWidth = 1.1 - index * 0.18;
-    context.stroke();
-  }
-}
-
-function drawConflictMembrane(context, centerX, centerY, baseRadius, time, motionLevel, scoreTilt, visualIntensity, goldPressure, redPressure) {
-  const width = baseRadius * (0.19 + visualIntensity * 0.035 + (goldPressure + redPressure) * 0.04);
-  const height = baseRadius * (0.14 + redPressure * 0.06 + goldPressure * 0.03);
-  const lift = -scoreTilt * baseRadius * 0.085;
-  const sway = Math.sin(time * (0.00055 + motionLevel * 0.0007)) * baseRadius * 0.018;
-  const pinch = baseRadius * (0.04 + Math.abs(scoreTilt) * 0.025);
-  const left = { x: centerX - width, y: centerY + sway * 0.55 };
-  const right = { x: centerX + width, y: centerY - sway * 0.55 };
-  const top = { x: centerX + sway * 0.45, y: centerY - height + lift - pinch * 0.5 };
-  const bottom = { x: centerX - sway * 0.55, y: centerY + height + lift + pinch + redPressure * baseRadius * 0.05 };
-  const membraneGradient = context.createLinearGradient(left.x, top.y, right.x, bottom.y);
-  membraneGradient.addColorStop(0, `rgba(240,208,128,${0.08 + goldPressure * 0.06})`);
-  membraneGradient.addColorStop(0.48, `rgba(154,118,82,${0.09 + visualIntensity * 0.03})`);
-  membraneGradient.addColorStop(1, `rgba(220,92,92,${0.08 + redPressure * 0.07})`);
-
-  context.beginPath();
-  context.moveTo(left.x, left.y);
-  context.bezierCurveTo(
-    centerX - width * 0.28,
-    top.y + pinch,
-    centerX - width * 0.06,
-    top.y,
-    top.x,
-    top.y
-  );
-  context.bezierCurveTo(
-    centerX + width * 0.08,
-    top.y,
-    centerX + width * 0.32,
-    top.y + pinch,
-    right.x,
-    right.y
-  );
-  context.bezierCurveTo(
-    centerX + width * 0.3,
-    bottom.y - pinch,
-    centerX + width * 0.04,
-    bottom.y,
-    bottom.x,
-    bottom.y
-  );
-  context.bezierCurveTo(
-    centerX - width * 0.1,
-    bottom.y,
-    centerX - width * 0.34,
-    bottom.y - pinch,
-    left.x,
-    left.y
-  );
-  context.closePath();
-  context.fillStyle = membraneGradient;
-  context.shadowColor = scoreTilt >= 0 ? "rgba(201,168,76,0.22)" : "rgba(204,68,68,0.24)";
-  context.shadowBlur = 14 + visualIntensity * 4;
-  context.fill();
-  context.shadowBlur = 0;
-
-  context.beginPath();
-  context.moveTo(left.x, left.y);
-  context.quadraticCurveTo(centerX, top.y - pinch * 0.2, right.x, right.y);
-  context.strokeStyle = `rgba(240,208,128,${0.11 + goldPressure * 0.08})`;
-  context.lineWidth = 0.9 + visualIntensity * 0.1;
-  context.stroke();
-
-  context.beginPath();
-  context.moveTo(left.x, left.y);
-  context.quadraticCurveTo(centerX, bottom.y + pinch * 0.15, right.x, right.y);
-  context.strokeStyle = `rgba(255,140,140,${0.11 + redPressure * 0.08})`;
-  context.lineWidth = 0.9 + visualIntensity * 0.1;
-  context.stroke();
-}
-
-function drawBridgeThreads(context, centerX, centerY, baseRadius, newSpokes, oldSpokes, totals, time, motionLevel, visualIntensity, goldPressure, redPressure) {
-  if (!newSpokes.length || !oldSpokes.length) {
-    return;
-  }
-
-  const rankedNew = [...newSpokes]
-    .map((spoke) => ({ ...spoke, count: totals[spoke.id] || 0 }))
-    .sort((left, right) => right.count - left.count)
-    .slice(0, Math.min(4, newSpokes.length));
-  const rankedOld = [...oldSpokes]
-    .map((spoke) => ({ ...spoke, count: totals[spoke.id] || 0 }))
-    .sort((left, right) => right.count - left.count)
-    .slice(0, Math.min(4, oldSpokes.length));
-  const bridgeCount = Math.min(Math.max(2, Math.min(rankedNew.length, rankedOld.length)), 4);
-
-  for (let index = 0; index < bridgeCount; index += 1) {
-    const source = rankedNew[index % rankedNew.length];
-    const target = rankedOld[index % rankedOld.length];
-    const sourceCount = source.count;
-    const targetCount = target.count;
-    const sharedStrength = Math.sqrt((sourceCount + 0.5) * (targetCount + 0.5));
-    const startFactor = 0.34 + index * 0.04;
-    const endFactor = 0.36 + index * 0.035;
-    const startX = centerX + Math.cos(source.radians) * (baseRadius * startFactor);
-    const startY = centerY + Math.sin(source.radians) * (baseRadius * startFactor);
-    const endX = centerX + Math.cos(target.radians) * (baseRadius * endFactor);
-    const endY = centerY + Math.sin(target.radians) * (baseRadius * endFactor) + target.downwardDrag * endFactor;
-    const bridgeSway = Math.sin(time * (0.00045 + motionLevel * 0.0007) + index * 0.9) * baseRadius * 0.025;
-    const controlX = centerX + bridgeSway + (index - (bridgeCount - 1) / 2) * baseRadius * 0.025;
-    const controlY = centerY + redPressure * baseRadius * 0.06 - goldPressure * baseRadius * 0.03 + (index % 2 === 0 ? -1 : 1) * baseRadius * 0.035;
-    const alpha = Math.min(0.08 + sharedStrength * 0.008 + visualIntensity * 0.02, 0.24);
-    const bridgeGradient = context.createLinearGradient(startX, startY, endX, endY);
-    bridgeGradient.addColorStop(0, `rgba(240,208,128,${alpha * (1 + goldPressure * 0.25)})`);
-    bridgeGradient.addColorStop(0.5, `rgba(156,118,84,${alpha * 0.9})`);
-    bridgeGradient.addColorStop(1, `rgba(255,140,140,${alpha * (1 + redPressure * 0.3)})`);
-
-    context.beginPath();
-    context.moveTo(startX, startY);
-    context.quadraticCurveTo(controlX, controlY, endX, endY);
-    context.strokeStyle = bridgeGradient;
-    context.lineWidth = 0.55 + Math.min(sharedStrength * 0.08, 0.95);
-    context.shadowColor = "rgba(120,92,64,0.3)";
-    context.shadowBlur = 4 + sharedStrength * 0.3;
-    context.stroke();
-    context.shadowBlur = 0;
-
-    const midpointX = ((startX + endX) / 2 + controlX) / 2;
-    const midpointY = ((startY + endY) / 2 + controlY) / 2;
-    context.beginPath();
-    context.arc(midpointX, midpointY, 1.2 + Math.min(sharedStrength * 0.08, 1.4), 0, Math.PI * 2);
-    context.fillStyle = `rgba(214,184,132,${0.14 + alpha * 0.8})`;
-    context.shadowColor = "rgba(214,184,132,0.28)";
-    context.shadowBlur = 6;
-    context.fill();
-    context.shadowBlur = 0;
-  }
-}
-
-function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStreak = 0, time = 0, flash = null, motionLevel = 1, visualProfile = VISUAL_MODES[DEFAULT_VISUAL_MODE]) {
+function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStreak = 0, time = 0, flash = null) {
   if (!canvas) {
     return;
   }
@@ -382,16 +143,6 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
     ...habits.new.map((habit) => ({ ...habit, type: "new" })),
     ...habits.old.map((habit) => ({ ...habit, type: "old" })),
   ];
-  const averageStrength = allHabits.reduce(
-    (sum, habit) => sum + Math.log((totals[habit.id] || 0) + 1),
-    0
-  ) / Math.max(allHabits.length, 1);
-  const scoreTilt = visualProfile?.scoreTilt || 0;
-  const goldPressure = Math.max(scoreTilt, 0);
-  const redPressure = Math.max(-scoreTilt, 0);
-  const visualIntensity = visualProfile?.intensity || 1;
-  const motionBoost = (0.35 + motionLevel * 0.65) * (visualProfile?.motion || 1);
-  const webIntensity = Math.min((0.9 + averageStrength * 0.28) * visualIntensity, 2.8);
 
   const totalNewStrength = habits.new.reduce(
     (sum, habit) => sum + Math.log((totals[habit.id] || 0) + 1),
@@ -402,16 +153,15 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
     0
   );
   const collapseFactor = Math.min(totalOldStrength / Math.max(totalNewStrength + 0.6, 1), 2.2);
-  const weightedCollapseFactor = clampNumber(collapseFactor + redPressure * 0.42 - goldPressure * 0.22, 0.16, 2.6);
   const centerPullY = Math.max(
-    Math.min((totalOldStrength - totalNewStrength) * (isCompact ? 2.2 : 2.8) + size * (redPressure - goldPressure) * 0.018, size * 0.072),
+    Math.min((totalOldStrength - totalNewStrength) * (isCompact ? 2.2 : 2.8), size * 0.065),
     -size * 0.035
   );
   const centerX = baseCenterX;
   const centerY = baseCenterY + centerPullY;
 
   if (!allHabits.length) {
-    drawCenter(context, centerX, centerY, isCompact, stats?.direction?.tone, todaySummary, time, motionLevel, scoreTilt, visualIntensity);
+    drawCenter(context, centerX, centerY, isCompact, stats?.direction?.tone, todaySummary, time);
     return;
   }
 
@@ -449,66 +199,11 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
   });
 
   const atmosphere = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, size * 0.78);
-  atmosphere.addColorStop(0, `rgba(201,168,76,${0.028 + averageStrength * 0.004 + goldPressure * 0.03})`);
-  atmosphere.addColorStop(0.42, `rgba(45,28,14,${0.04 + averageStrength * 0.005})`);
+  atmosphere.addColorStop(0, "rgba(201,168,76,0.025)");
+  atmosphere.addColorStop(0.42, "rgba(45,28,14,0.035)");
   atmosphere.addColorStop(1, "rgba(0,0,0,0)");
   context.fillStyle = atmosphere;
   context.fillRect(0, 0, size, size);
-
-
-  const coreAura = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, baseRadius * 0.62);
-  coreAura.addColorStop(0, scoreTilt >= 0
-    ? `rgba(255,238,186,${0.04 + averageStrength * 0.012 + goldPressure * 0.04})`
-    : `rgba(255,210,210,${0.03 + redPressure * 0.03})`);
-  coreAura.addColorStop(0.45, scoreTilt >= 0
-    ? `rgba(201,168,76,${0.025 + averageStrength * 0.008 + goldPressure * 0.03})`
-    : `rgba(204,68,68,${0.02 + redPressure * 0.03})`);
-  coreAura.addColorStop(1, "rgba(0,0,0,0)");
-  context.fillStyle = coreAura;
-  context.fillRect(0, 0, size, size);
-
-
-  ["new", "old"].forEach((zone) => {
-    const zoneSpokes = spokes.filter((spoke) => spoke.type === zone);
-    if (zoneSpokes.length < 2) {
-      return;
-    }
-
-    const outerScale = zone === "old" ? 0.95 : 0.92;
-    const innerScale = zone === "old" ? 0.36 : 0.4;
-    const outerPoints = zoneSpokes.map((spoke) => ({
-      x: centerX + Math.cos(spoke.radians) * (baseRadius * outerScale),
-      y: centerY + Math.sin(spoke.radians) * (baseRadius * outerScale) + spoke.downwardDrag * outerScale,
-    }));
-    const innerPoints = [...zoneSpokes].reverse().map((spoke) => ({
-      x: centerX + Math.cos(spoke.radians) * (baseRadius * innerScale),
-      y: centerY + Math.sin(spoke.radians) * (baseRadius * innerScale) + spoke.downwardDrag * innerScale,
-    }));
-
-    context.beginPath();
-    outerPoints.forEach((point, index) => {
-      if (index === 0) {
-        context.moveTo(point.x, point.y);
-      } else {
-        context.lineTo(point.x, point.y);
-      }
-    });
-    innerPoints.forEach((point) => {
-      context.lineTo(point.x, point.y);
-    });
-    context.closePath();
-    context.fillStyle = zone === "new"
-      ? `rgba(201,168,76,${(0.018 + averageStrength * 0.008 + goldPressure * 0.03) * visualIntensity})`
-      : `rgba(204,68,68,${(0.016 + averageStrength * 0.007 + redPressure * 0.034) * visualIntensity})`;
-    context.fill();
-  });
-
-  if (weightedCollapseFactor > 0.62) {
-    drawCollapseShadow(context, centerX, centerY, baseRadius, weightedCollapseFactor, time, motionLevel, 1 + redPressure * 0.55 + Math.max(visualIntensity - 1, 0) * 0.4);
-  }
-
-
-  drawConflictMembrane(context, centerX, centerY, baseRadius, time, motionLevel, scoreTilt, visualIntensity, goldPressure, redPressure);
 
 
 
@@ -521,7 +216,7 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
 
   for (let ring = 1; ring <= rings; ring += 1) {
     const ringRadius = (ring / rings) * baseRadius;
-    const ringAlpha = Math.min(0.07 + (ring / rings) * 0.045 * motionBoost + averageStrength * 0.008, 0.16);
+    const ringAlpha = 0.06 + (ring / rings) * 0.04;
 
     // vollständiges Netz — alle Spokes verbunden, Lücke mit Mischton
     context.beginPath();
@@ -533,7 +228,7 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
     });
     context.closePath();
     context.strokeStyle = `rgba(130,100,60,${ringAlpha})`;
-    context.lineWidth = 0.7 + webIntensity * 0.08;
+    context.lineWidth = 0.7;
     context.stroke();
 
     // Zonen-Overlay: gold für new, rot für old
@@ -548,14 +243,14 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
         else context.lineTo(x, y);
       });
       context.strokeStyle = zone === "new"
-        ? `rgba(201,168,76,${ringAlpha * (1.25 + goldPressure * 0.35)})`
-        : `rgba(204,88,88,${ringAlpha * (1.2 + redPressure * 0.45)})`;
-      context.lineWidth = 0.85 + webIntensity * 0.08;
+        ? `rgba(201,168,76,${ringAlpha * 1.4})`
+        : `rgba(204,88,88,${ringAlpha * 1.4})`;
+      context.lineWidth = 0.8;
       context.stroke();
     }
   }
 
-  const meshFractions = [0.22, 0.36, 0.5, 0.64, 0.78];
+  const meshFractions = [0.24, 0.38, 0.52, 0.66];
   meshFractions.forEach((fraction, meshIndex) => {
     for (let index = 0; index < spokes.length; index += 1) {
       for (let secondIndex = index + 2; secondIndex < spokes.length; secondIndex += 1) {
@@ -566,8 +261,8 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
         const sharedStrength = Math.sqrt((currentCount + 0.2) * (otherCount + 0.2));
         const sameZone = current.type === other.type;
         const alpha = sameZone
-          ? Math.min(0.012 + sharedStrength * 0.007 + meshIndex * 0.0018 + averageStrength * 0.002, 0.095)
-          : Math.min(0.005 + sharedStrength * 0.0022 + averageStrength * 0.001, 0.026);
+          ? Math.min(0.008 + sharedStrength * 0.006 + meshIndex * 0.0015, 0.075)
+          : Math.min(0.004 + sharedStrength * 0.002, 0.02);
         const pointA = {
           x: centerX + Math.cos(current.radians) * (fraction * baseRadius),
           y:
@@ -588,13 +283,13 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
         context.lineTo(pointB.x, pointB.y);
         context.strokeStyle = sameZone
           ? current.type === "new"
-            ? `rgba(201,168,76,${alpha * (1 + goldPressure * 0.3)})`
-            : `rgba(204,68,68,${Math.max(alpha * (1 + redPressure * 0.45) - 0.01, 0.025)})`
+            ? `rgba(201,168,76,${alpha})`
+            : `rgba(204,68,68,${Math.max(alpha - 0.01, 0.025)})`
           : `rgba(88,72,52,${alpha})`;
-        context.lineWidth = sameZone ? 0.38 + meshIndex * 0.03 : 0.26;
+        context.lineWidth = sameZone ? 0.36 : 0.24;
         if (sameZone && sharedStrength > 4) {
           context.shadowColor = current.type === "new" ? "#c9a84c" : "#cc4444";
-          context.shadowBlur = Math.min(3 + sharedStrength * 0.28, 8);
+          context.shadowBlur = Math.min(2 + sharedStrength * 0.22, 6);
         }
         context.stroke();
         context.shadowBlur = 0;
@@ -622,15 +317,15 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
       const sharedStrength = Math.sqrt(currentCount * nextCount);
       const sameZone = current.type === next.type;
       const alpha = sameZone
-        ? Math.min(0.06 + sharedStrength * 0.013 + fractionA * 0.012 + averageStrength * 0.005, 0.28)
+        ? Math.min(0.05 + sharedStrength * 0.012 + fractionA * 0.01, 0.22)
         : Math.min(0.025 + sharedStrength * 0.005, 0.08);
-      const lineWidth = (isCompact ? 0.32 : 0.38) + Math.min(sharedStrength * 0.06 + webIntensity * 0.04, 0.9);
+      const lineWidth = (isCompact ? 0.3 : 0.35) + Math.min(sharedStrength * 0.05, 0.65);
       let stroke = `rgba(100,90,60,${alpha})`;
 
       if (sameZone && current.type === "new") {
-        stroke = `rgba(201,168,76,${alpha * (1 + goldPressure * 0.35)})`;
+        stroke = `rgba(201,168,76,${alpha})`;
       } else if (sameZone && current.type === "old") {
-        stroke = `rgba(204,68,68,${Math.max(alpha * (1 + redPressure * 0.45) - 0.01, 0.03)})`;
+        stroke = `rgba(204,68,68,${Math.max(alpha - 0.01, 0.03)})`;
       }
 
       context.beginPath();
@@ -649,33 +344,15 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
     }
   }
 
-  drawBridgeThreads(
-    context,
-    centerX,
-    centerY,
-    baseRadius,
-    spokes.filter((spoke) => spoke.type === "new"),
-    spokes.filter((spoke) => spoke.type === "old"),
-    totals,
-    time,
-    motionLevel,
-    visualIntensity,
-    goldPressure,
-    redPressure
-  );
-
   spokes.forEach((spoke) => {
     const count = totals[spoke.id] || 0;
     const isNew = spoke.type === "new";
     const decay = isNew ? 1.0 : oldHabitDecay(lastSeen[spoke.id]);
-    const tension = isNew
-      ? Math.min(Math.log(count + 1) * 0.28 + motionLevel * 0.18 + goldPressure * 0.38, 1.4)
-      : Math.min((1 - decay) * 0.95 + Math.log(count + 1) * 0.18 + weightedCollapseFactor * 0.18 + redPressure * 0.42, 1.55);
 
     context.beginPath();
     context.moveTo(centerX, centerY);
     context.lineTo(spoke.endX, spoke.endY);
-    context.strokeStyle = isNew ? `rgba(201,168,76,${0.055 + tension * 0.03})` : `rgba(204,68,68,${(0.06 + tension * 0.028) * decay})`;
+    context.strokeStyle = isNew ? "rgba(201,168,76,0.06)" : `rgba(204,68,68,${0.06 * decay})`;
     context.lineWidth = 0.5;
     context.stroke();
 
@@ -683,9 +360,9 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
       const flashIntensity = flash && flash.habitId === spoke.id
         ? Math.max(0, 1 - (Date.now() - flash.startTime) / 400)
         : 0;
-      const thickness = (((isCompact ? 0.65 : 0.8) + Math.log(count + 1) * (isCompact ? 1.8 : 2.2)) * (isNew ? 1 : decay)) + tension * 0.22;
-      const brightness = Math.min((0.15 + Math.log(count + 1) * 0.12 + tension * 0.07) * (isNew ? 1 : decay) + flashIntensity * 0.5, 1);
-      const glowSize = (((isCompact ? 2 : 3) + Math.log(count + 1) * (isCompact ? 2.2 : 3)) * (isNew ? 1 : decay)) + tension * 0.8;
+      const thickness = ((isCompact ? 0.65 : 0.8) + Math.log(count + 1) * (isCompact ? 1.8 : 2.2)) * (isNew ? 1 : decay);
+      const brightness = Math.min((0.15 + Math.log(count + 1) * 0.12) * (isNew ? 1 : decay) + flashIntensity * 0.5, 1);
+      const glowSize = ((isCompact ? 2 : 3) + Math.log(count + 1) * (isCompact ? 2.2 : 3)) * (isNew ? 1 : decay);
       const color = isNew
         ? `rgba(201,168,76,${brightness})`
         : `rgba(220,80,80,${brightness})`;
@@ -700,25 +377,6 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
       context.shadowBlur = glowSize * (0.72 + flashIntensity * 2.5);
       context.stroke();
       context.shadowBlur = 0;
-
-      const beamGradient = context.createLinearGradient(centerX, centerY, spoke.endX, spoke.endY);
-      beamGradient.addColorStop(0, isNew ? `rgba(255,236,184,${0.08 + brightness * 0.2})` : `rgba(255,194,194,${0.07 + brightness * 0.16})`);
-      beamGradient.addColorStop(0.55, color);
-      beamGradient.addColorStop(1, isNew ? `rgba(240,208,128,${Math.min(brightness + 0.08, 1)})` : `rgba(255,162,162,${Math.min(brightness + 0.08, 1)})`);
-
-      context.beginPath();
-      context.moveTo(centerX, centerY);
-      context.lineTo(spoke.endX, spoke.endY);
-      context.strokeStyle = beamGradient;
-      context.lineWidth = Math.max(thickness * 0.45, isCompact ? 0.8 : 1.05) + flashIntensity * 1.1;
-      context.shadowColor = shadowColor;
-      context.shadowBlur = glowSize * (0.25 + motionLevel * 0.35 + flashIntensity * 0.9);
-      context.stroke();
-      context.shadowBlur = 0;
-
-      if (isNew && count > 0) {
-        drawThreadFlow(context, centerX, centerY, spoke, count, time, motionLevel, isCompact, visualIntensity + goldPressure * 0.18);
-      }
 
       const milestone = count >= 100 ? 100 : count >= 30 ? 30 : count >= 7 ? 7 : 0;
       if (milestone) {
@@ -767,15 +425,15 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
     else                              clampedLabelX = Math.max(textW / 2 + edgePad, Math.min(size - textW / 2 - edgePad, labelX));
 
     const labelColor = isNew
-      ? `rgba(240,208,128,${count > 0 ? Math.min(0.54 + Math.log(count + 1) * 0.11 + tension * 0.08, 1) : 0.42})`
-      : `rgba(255,168,168,${count > 0 ? Math.min((0.52 + Math.log(count + 1) * 0.11 + tension * 0.06) * decay, 0.98) : 0.4 * decay})`;
+      ? `rgba(240,208,128,${count > 0 ? Math.min(0.52 + Math.log(count + 1) * 0.12, 0.98) : 0.4})`
+      : `rgba(255,168,168,${count > 0 ? Math.min((0.5 + Math.log(count + 1) * 0.11) * decay, 0.96) : 0.38 * decay})`;
     drawTextWithHalo(context, spoke.label, clampedLabelX, labelY, {
       font: `${count > 10 ? "600" : "500"} ${isCompact ? 9.25 : 10.75}px serif`,
       align: labelAlign,
       fillStyle: labelColor,
-      strokeWidth: (isCompact ? 3.8 : 4.4) + tension * 0.3,
-      shadowColor: isNew ? `rgba(201,168,76,${0.18 + tension * 0.08})` : `rgba(204,68,68,${0.22 + tension * 0.08})`,
-      shadowBlur: (isCompact ? 7 : 9) + tension * 2,
+      strokeWidth: isCompact ? 3.8 : 4.4,
+      shadowColor: isNew ? "rgba(201,168,76,0.18)" : "rgba(204,68,68,0.22)",
+      shadowBlur: isCompact ? 7 : 9,
     });
 
     if (count > 0) {
@@ -785,41 +443,33 @@ function drawWeb(canvas, habits, totals, lastSeen, stats, todayEntries, callStre
         font: `600 ${isCompact ? 8 : 8.9}px serif`,
         align: labelAlign,
         fillStyle: isNew ? "rgba(240,208,128,0.84)" : "rgba(255,176,176,0.82)",
-        strokeWidth: (isCompact ? 3 : 3.5) + tension * 0.18,
-        shadowColor: isNew ? `rgba(201,168,76,${0.16 + tension * 0.06})` : `rgba(204,68,68,${0.2 + tension * 0.06})`,
-        shadowBlur: (isCompact ? 5 : 7) + tension * 1.4,
+        strokeWidth: isCompact ? 3 : 3.5,
+        shadowColor: isNew ? "rgba(201,168,76,0.16)" : "rgba(204,68,68,0.2)",
+        shadowBlur: isCompact ? 5 : 7,
       });
     }
 
     if (count > 0) {
       context.beginPath();
-      context.arc(spoke.endX, spoke.endY, (isCompact ? 2.1 : 2.6) + tension * 0.45, 0, Math.PI * 2);
+      context.arc(spoke.endX, spoke.endY, isCompact ? 2.1 : 2.6, 0, Math.PI * 2);
       context.fillStyle = isNew ? "rgba(240,208,128,0.76)" : "rgba(255,150,150,0.68)";
       context.shadowColor = isNew ? "#f0d080" : "#ff9c9c";
-      context.shadowBlur = 7 + tension * 3;
+      context.shadowBlur = 7;
       context.fill();
       context.shadowBlur = 0;
-
-      context.beginPath();
-      context.arc(spoke.endX, spoke.endY, (isCompact ? 3.8 : 4.8) + Math.min(Math.log(count + 1) * 0.55, 2.2) + tension * 0.8, 0, Math.PI * 2);
-      context.strokeStyle = isNew
-        ? `rgba(240,208,128,${0.15 + Math.min(count * 0.008, 0.18)})`
-        : `rgba(255,162,162,${0.14 + Math.min(count * 0.007, 0.16)})`;
-      context.lineWidth = isCompact ? 0.8 : 1;
-      context.stroke();
     }
 
   });
 
-if (weightedCollapseFactor > 0.72) {
-    for (let i = 0; i < Math.min(3 + Math.floor(weightedCollapseFactor), 5); i += 1) {
+if (collapseFactor > 0.72) {
+    for (let i = 0; i < Math.min(3 + Math.floor(collapseFactor), 5); i += 1) {
       const arcRadius = baseRadius * (0.42 + i * 0.08);
       const arcStart = (145 + i * 10) * (Math.PI / 180);
       const arcEnd = (212 + i * 8) * (Math.PI / 180);
       context.beginPath();
       context.arc(centerX, centerY + i * 2.5, arcRadius, arcStart, arcEnd, false);
-      context.strokeStyle = `rgba(204,68,68,${Math.min(0.06 + weightedCollapseFactor * 0.038 + redPressure * 0.04, 0.2)})`;
-      context.lineWidth = 0.65 + i * 0.05;
+      context.strokeStyle = `rgba(204,68,68,${Math.min(0.04 + collapseFactor * 0.025, 0.11)})`;
+      context.lineWidth = 0.45;
       context.stroke();
     }
   }
@@ -829,35 +479,22 @@ if (weightedCollapseFactor > 0.72) {
   if (callStreak >= 1) {
     const akquiseSpoke = spokes.find((s) => s.category === "AKQUISE");
     if (akquiseSpoke) {
-      drawFire(context, akquiseSpoke.endX, akquiseSpoke.endY, time, callStreak, motionLevel);
+      drawFire(context, akquiseSpoke.endX, akquiseSpoke.endY, time, callStreak);
     }
   }
 
-  drawCenter(context, centerX, centerY, isCompact, stats?.direction?.tone, todaySummary, time, motionLevel, scoreTilt, visualIntensity);
+  drawCenter(context, centerX, centerY, isCompact, stats?.direction?.tone, todaySummary, time);
 }
 
-function drawCenter(context, centerX, centerY, isCompact = false, tone = "dim", todaySummary = { new: 0, old: 0 }, time = 0, motionLevel = 1, scoreTilt = 0, visualIntensity = 1) {
-  const pulseAmplitude = (todaySummary.new !== 0 || todaySummary.old !== 0 ? 0.03 : 0.015) * (0.2 + motionLevel * 0.8);
-  const pulse = 1 + Math.sin(time * (0.0008 + motionLevel * 0.0024)) * pulseAmplitude;
+function drawCenter(context, centerX, centerY, isCompact = false, tone = "dim", todaySummary = { new: 0, old: 0 }, time = 0) {
+  const pulse = 1 + Math.sin(time * 0.0032) * (todaySummary.new !== 0 || todaySummary.old !== 0 ? 0.03 : 0.015);
   const radius = (isCompact ? 8 : 10) * pulse;
   const diff = Math.abs((todaySummary?.new || 0) - (todaySummary?.old || 0));
-  const scoreTone = scoreTilt > 0.18 ? "gold" : scoreTilt < -0.18 ? "red" : tone;
-  const dominantTone = todaySummary.new > todaySummary.old ? "gold" : todaySummary.old > todaySummary.new ? "red" : scoreTone;
+  const dominantTone = todaySummary.new > todaySummary.old ? "gold" : todaySummary.old > todaySummary.new ? "red" : tone;
   const innerColor = dominantTone === "red" ? "#ffaaaa" : "#f0d080";
   const midColor = dominantTone === "red" ? "#cc4444" : "#c9a84c";
   const outerAlpha = todaySummary.new === 0 && todaySummary.old === 0 ? 0.14 : Math.min(0.24 + diff * 0.04, 0.5);
   const shadowColor = dominantTone === "red" ? "#cc4444" : "#c9a84c";
-
-  const haloRadius = radius + (isCompact ? 18 : 24) + diff * 1.4 + Math.abs(scoreTilt) * 5;
-  const halo = context.createRadialGradient(centerX, centerY, radius * 0.45, centerX, centerY, haloRadius);
-  halo.addColorStop(0, dominantTone === "red" ? `rgba(204,68,68,${0.16 + motionLevel * 0.08 + Math.abs(scoreTilt) * 0.06})` : `rgba(201,168,76,${0.16 + motionLevel * 0.08 + Math.abs(scoreTilt) * 0.06})`);
-  halo.addColorStop(0.4, dominantTone === "red" ? `rgba(204,68,68,${0.06 + motionLevel * 0.03 + Math.abs(scoreTilt) * 0.025})` : `rgba(201,168,76,${0.06 + motionLevel * 0.03 + Math.abs(scoreTilt) * 0.025})`);
-  halo.addColorStop(1, "rgba(0,0,0,0)");
-  context.beginPath();
-  context.arc(centerX, centerY, haloRadius, 0, Math.PI * 2);
-  context.fillStyle = halo;
-  context.fill();
-
   const gradient = context.createRadialGradient(centerX, centerY, 0, centerX, centerY, radius);
   gradient.addColorStop(0, innerColor);
   gradient.addColorStop(0.6, midColor);
@@ -866,7 +503,7 @@ function drawCenter(context, centerX, centerY, isCompact = false, tone = "dim", 
   context.arc(centerX, centerY, radius, 0, Math.PI * 2);
   context.fillStyle = gradient;
   context.shadowColor = shadowColor;
-  context.shadowBlur = todaySummary.new === 0 && todaySummary.old === 0 ? 16 : Math.min((24 + diff * 4) * visualIntensity + Math.abs(scoreTilt) * 6, 52);
+  context.shadowBlur = todaySummary.new === 0 && todaySummary.old === 0 ? 16 : Math.min(24 + diff * 4, 42);
   context.fill();
   context.shadowBlur = 0;
 
@@ -885,63 +522,6 @@ function drawCenter(context, centerX, centerY, isCompact = false, tone = "dim", 
   }
 }
 
-function buildReplayFrames(historyDays = [], totals = {}, lastSeen = {}) {
-  if (!historyDays.length) {
-    return [];
-  }
-
-  const startDate = historyDays[0].date;
-  const windowCounts = {};
-  const currentLastSeen = { ...lastSeen };
-
-  historyDays.forEach((day) => {
-    (day.entries || []).forEach((entry) => {
-      windowCounts[entry.habitId] = (windowCounts[entry.habitId] || 0) + 1;
-    });
-  });
-
-  const runningTotals = Object.entries(totals).reduce((accumulator, [habitId, count]) => {
-    accumulator[habitId] = Math.max(Number(count) - (windowCounts[habitId] || 0), 0);
-    return accumulator;
-  }, {});
-
-  Object.keys(currentLastSeen).forEach((habitId) => {
-    if (currentLastSeen[habitId] && currentLastSeen[habitId] >= startDate) {
-      currentLastSeen[habitId] = null;
-    }
-  });
-
-  return historyDays.map((day) => {
-    (day.entries || []).forEach((entry) => {
-      runningTotals[entry.habitId] = (runningTotals[entry.habitId] || 0) + 1;
-      if (entry.type === "old") {
-        currentLastSeen[entry.habitId] = day.date;
-      }
-    });
-
-    return {
-      date: day.date,
-      totals: { ...runningTotals },
-      lastSeen: { ...currentLastSeen },
-      todayEntries: day.entries || [],
-      summary: { new: day.new || 0, old: day.old || 0, total: day.total || 0 },
-    };
-  });
-}
-
-function formatReplayDate(dateStr) {
-  if (!dateStr) {
-    return "";
-  }
-
-  const [year, month, day] = dateStr.split("-");
-  return new Intl.DateTimeFormat("de-DE", {
-    day: "2-digit",
-    month: "short",
-    year: "2-digit",
-  }).format(new Date(Number(year), Number(month) - 1, Number(day)));
-}
-
 async function request(path, options) {
   const response = await fetch(path, {
     headers: { "Content-Type": "application/json" },
@@ -957,17 +537,9 @@ async function request(path, options) {
 }
 
 export default function Home() {
-  const router = useRouter();
   const canvasRef = useRef(null);
   const stateRef = useRef(INITIAL_STATE);
   const flashRef = useRef(null);
-  const motionBurstUntilRef = useRef(Date.now() + MOTION_BURST_MS);
-  const reducedMotionRef = useRef(false);
-  const replayFrameRef = useRef(null);
-  const replayActiveRef = useRef(false);
-  const replayRouteHandledRef = useRef(false);
-  const visualModeRef = useRef(null);
-  const noteInputRef = useRef(null);
   const noteValueRef = useRef("");
   const noteSaveTimerRef = useRef(null);
   const noteStatusTimerRef = useRef(null);
@@ -984,18 +556,11 @@ export default function Home() {
   const [note, setNote] = useState("");
   const [noteSaveState, setNoteSaveState] = useState("idle");
   const [lastRecorded, setLastRecorded] = useState(null);
-  const [replayActive, setReplayActive] = useState(false);
-  const [replayAutoPlay, setReplayAutoPlay] = useState(false);
-  const [replayIndex, setReplayIndex] = useState(0);
   const completedToday = isDevMode ? new Set() : new Set(state.todayEntries.map((entry) => entry.habitId));
   const todayCountPerHabit = state.todayEntries.reduce((acc, e) => {
     acc[e.habitId] = (acc[e.habitId] || 0) + 1;
     return acc;
   }, {});
-  const replayFrames = buildReplayFrames(state.historyDays, state.totals, state.lastSeen);
-  const replayFrame = replayActive && replayFrames.length ? replayFrames[Math.min(replayIndex, replayFrames.length - 1)] : null;
-  const visualProfile = getVisualProfile(state.score);
-  const replayRequested = router.isReady && hasReplayFlag(router.query.replay);
 
   useEffect(() => {
     stateRef.current = state;
@@ -1007,43 +572,10 @@ export default function Home() {
 
   useEffect(() => {
     const textarea = noteInputRef.current;
-    if (!textarea) {
-      return;
-    }
-
+    if (!textarea) return;
     textarea.style.height = "auto";
     textarea.style.height = `${textarea.scrollHeight}px`;
   }, [note]);
-
-  useEffect(() => {
-    replayFrameRef.current = replayFrame;
-    replayActiveRef.current = Boolean(replayFrame);
-  }, [replayFrame]);
-
-  useEffect(() => {
-    if (!router.isReady) {
-      return;
-    }
-
-    if (!replayRequested) {
-      replayRouteHandledRef.current = false;
-      return;
-    }
-
-    if (!replayFrames.length || replayRouteHandledRef.current) {
-      return;
-    }
-
-    replayRouteHandledRef.current = true;
-    setReplayIndex(0);
-    setReplayActive(true);
-    setReplayAutoPlay(true);
-    kickMotion(replayFrames.length * REPLAY_STEP_MS + 1500);
-  }, [router.isReady, replayRequested, replayFrames.length]);
-
-  function kickMotion(duration = MOTION_BURST_MS) {
-    motionBurstUntilRef.current = Date.now() + duration;
-  }
 
   function clearNoteStatusTimer() {
     if (noteStatusTimerRef.current) {
@@ -1129,48 +661,6 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
-    const syncReducedMotion = () => {
-      reducedMotionRef.current = mediaQuery.matches;
-    };
-
-    const handleVisibilityChange = () => {
-      if (!document.hidden) {
-        kickMotion(2500);
-      }
-    };
-
-    syncReducedMotion();
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", syncReducedMotion);
-    } else {
-      mediaQuery.addListener(syncReducedMotion);
-    }
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-
-    return () => {
-      if (typeof mediaQuery.removeEventListener === "function") {
-        mediaQuery.removeEventListener("change", syncReducedMotion);
-      } else {
-        mediaQuery.removeListener(syncReducedMotion);
-      }
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!replayActive || !replayAutoPlay || !replayFrames.length) {
-      return undefined;
-    }
-
-    kickMotion(replayFrames.length * REPLAY_STEP_MS + 1500);
-    const intervalId = window.setInterval(() => {
-      setReplayIndex((current) => (current >= replayFrames.length - 1 ? 0 : current + 1));
-    }, reducedMotionRef.current ? Math.round(REPLAY_STEP_MS * 1.4) : REPLAY_STEP_MS);
-    return () => window.clearInterval(intervalId);
-  }, [replayActive, replayAutoPlay, replayFrames]);
-
-  useEffect(() => {
     return () => {
       if (noteSaveTimerRef.current) {
         window.clearTimeout(noteSaveTimerRef.current);
@@ -1210,47 +700,25 @@ export default function Home() {
   useEffect(() => {
     let frameId;
     let lastFrameTime = 0;
-    let frozenTime = 0;
+    const FRAME_INTERVAL = 1000 / 30;
 
     function renderFrame(frameTime) {
       frameId = window.requestAnimationFrame(renderFrame);
-      const flashActive = flashRef.current && Date.now() - flashRef.current.startTime < 450;
-      if (!flashActive && flashRef.current) {
-        flashRef.current = null;
-      }
-
-      const burstActive = Date.now() < motionBurstUntilRef.current || flashActive || replayActiveRef.current;
-      const frameInterval = 1000 / (reducedMotionRef.current ? REDUCED_FPS : burstActive ? ACTIVE_FPS : IDLE_FPS);
-      if (frameTime - lastFrameTime < frameInterval) {
+      if (frameTime - lastFrameTime < FRAME_INTERVAL) {
         return;
       }
       lastFrameTime = frameTime;
-      frozenTime = burstActive || frozenTime === 0 ? frameTime : frozenTime;
       const liveState = stateRef.current;
-      const replayFrameState = replayFrameRef.current;
-      const activeVisualProfile = getVisualProfile(liveState.score);
-      const visualState = replayFrameState
-        ? {
-            ...liveState,
-            totals: replayFrameState.totals,
-            lastSeen: replayFrameState.lastSeen,
-            todayEntries: replayFrameState.todayEntries,
-            callStreak: 0,
-          }
-        : liveState;
-
       drawWeb(
         canvasRef.current,
-        visualState.habits,
-        visualState.totals,
-        visualState.lastSeen,
-        visualState.stats,
-        visualState.todayEntries,
-        visualState.callStreak,
-        burstActive ? frameTime : frozenTime,
-        flashRef.current,
-        reducedMotionRef.current ? 0.12 : burstActive ? 1 : 0.18,
-        activeVisualProfile
+        liveState.habits,
+        liveState.totals,
+        liveState.lastSeen,
+        liveState.stats,
+        liveState.todayEntries,
+        liveState.callStreak,
+        frameTime,
+        flashRef.current
       );
     }
 
@@ -1263,12 +731,6 @@ export default function Home() {
     setBusy(true);
     setError("");
     setMessage("");
-    if (replayActiveRef.current) {
-      setReplayActive(false);
-      setReplayAutoPlay(false);
-      setReplayIndex(0);
-    }
-    kickMotion(4500);
 
     try {
       const payload = await action();
@@ -1302,7 +764,6 @@ export default function Home() {
 
   function handleRecord(habitId) {
     const habit = [...state.habits.new, ...state.habits.old].find((h) => h.id === habitId);
-    kickMotion(7000);
     flashRef.current = { habitId, startTime: Date.now() };
     if (navigator.vibrate) navigator.vibrate(42);
     runAction(() => request("/api/entries", { method: "POST", body: JSON.stringify({ habitId }) }));
@@ -1363,42 +824,6 @@ export default function Home() {
     reader.readAsText(file);
   }
 
-  function toggleReplayAutoPlay() {
-    if (!replayActive) {
-      setReplayActive(true);
-    }
-    setReplayAutoPlay((current) => !current);
-    kickMotion(3000);
-  }
-
-  function stepReplay(direction) {
-    if (!replayFrames.length) {
-      return;
-    }
-
-    setReplayActive(true);
-    setReplayAutoPlay(false);
-    setReplayIndex((current) => {
-      const next = current + direction;
-      if (next < 0) {
-        return 0;
-      }
-      if (next > replayFrames.length - 1) {
-        return replayFrames.length - 1;
-      }
-      return next;
-    });
-    kickMotion(2200);
-  }
-
-  function handleReplayScrub(event) {
-    const nextIndex = Number(event.target.value);
-    setReplayActive(true);
-    setReplayAutoPlay(false);
-    setReplayIndex(nextIndex);
-    kickMotion(2200);
-  }
-
   const noteStatusLabel = noteSaveState === "pending"
     ? "ungespeichert"
     : noteSaveState === "saving"
@@ -1429,6 +854,11 @@ export default function Home() {
         <StarSystem refreshKey={starRefreshKey} />
 
         <section className="status-grid" aria-label="Status">
+          <article className="status-card">
+            <span className="status-label">Tage übrig</span>
+            <strong className="status-value dim">{loading ? "—" : state.stats.daysLeft}</strong>
+            <span className="status-meta">von {state.stats.daysTotal}</span>
+          </article>
           <article className="status-card">
             <span className="status-label">Streak</span>
             <strong className="status-value gold">{loading ? "—" : state.stats.streak}</strong>
@@ -1486,55 +916,7 @@ export default function Home() {
         </section>
 
         <section className="canvas-wrap">
-          {replayFrame ? (
-            <div className="canvas-head">
-              <p className="section-label muted canvas-label">Netz</p>
-              <p className="canvas-subline">{`Replay · ${formatReplayDate(replayFrame.date)}`}</p>
-            </div>
-          ) : null}
-
-          {replayRequested && replayFrames.length ? (
-            <div className="canvas-replay-shell">
-              <div className="canvas-replay-meta" aria-label="Replay-Status">
-                <span className="canvas-replay-meta__label">Zeitraum</span>
-                <span className="canvas-replay-meta__value">{formatReplayDate(replayFrames[0].date)} bis {formatReplayDate(replayFrames[replayFrames.length - 1].date)}</span>
-                <span className="canvas-replay-meta__step">{replayActive ? `${replayIndex + 1}/${replayFrames.length}` : "bereit"}</span>
-              </div>
-
-              <div className="canvas-scrubber" aria-label="Replay-Steuerung">
-                <div className="canvas-scrubber__buttons">
-                  <button type="button" className="canvas-scrubber__btn" onClick={() => stepReplay(-1)} disabled={!replayActive || replayIndex === 0}>
-                    Zurück
-                  </button>
-                  <button type="button" className={`canvas-scrubber__btn${replayAutoPlay ? " canvas-scrubber__btn--active" : ""}`} onClick={toggleReplayAutoPlay} disabled={!replayFrames.length}>
-                    {replayAutoPlay ? "Pause" : "Play"}
-                  </button>
-                  <button type="button" className="canvas-scrubber__btn" onClick={() => stepReplay(1)} disabled={!replayActive || replayIndex === replayFrames.length - 1}>
-                    Weiter
-                  </button>
-                </div>
-
-                <input
-                  type="range"
-                  min="0"
-                  max={Math.max(replayFrames.length - 1, 0)}
-                  step="1"
-                  value={replayIndex}
-                  onChange={handleReplayScrub}
-                  className="canvas-scrubber__range"
-                  aria-label="Replay-Scrubber"
-                />
-
-                <div className="canvas-scrubber__labels" aria-hidden="true">
-                  <span>{formatReplayDate(replayFrames[0].date)}</span>
-                  <span>{formatReplayDate(replayFrames[Math.min(replayIndex, replayFrames.length - 1)]?.date)}</span>
-                  <span>{formatReplayDate(replayFrames[replayFrames.length - 1].date)}</span>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          <canvas ref={canvasRef} className={`web-canvas${replayActive ? " web-canvas--replay" : ""}`} aria-label="Netz-Visualisierung" />
+          <canvas ref={canvasRef} className="web-canvas" aria-label="Netz-Visualisierung" />
         </section>
 
         <section className="controls">
@@ -1544,7 +926,6 @@ export default function Home() {
               {noteStatusLabel ? <span className={`note-status note-status--${noteSaveState}`}>{noteStatusLabel}</span> : null}
             </p>
             <textarea
-              ref={noteInputRef}
               className="note-input"
               value={note}
               onChange={(e) => setNote(e.target.value)}
@@ -1738,14 +1119,6 @@ const CAT_LABELS = { AKQUISE: "Akquise ×5", HYGIENE: "Hygiene ×1", SABOTAGE: "
 function HabitCard({ habit, tone, done, todayN, total, pendingDelete, disabled, onRecord, onDelete }) {
   const isAkquise = habit.category === "AKQUISE";
   const blocked = done && !isAkquise;
-  const statusLabel = tone === "new"
-    ? todayN > 0
-      ? todayN > 1 ? `${todayN}× heute` : "heute"
-      : "offen"
-    : todayN > 0
-    ? `${todayN}× passiert`
-    : "vermieden";
-
   return (
     <article className={`habit-card ${tone} ${blocked ? "done" : ""}`}>
       <button
@@ -1756,13 +1129,11 @@ function HabitCard({ habit, tone, done, todayN, total, pendingDelete, disabled, 
         aria-label={habit.label}
       >
         <span className="habit-dot" />
-        <span className="habit-copy">
-          <span className="habit-label">{habit.label}</span>
-          <span className="habit-total">{`gesamt ${total}×`}</span>
-        </span>
-        <span className={`habit-status habit-status--${tone}${todayN > 0 ? " habit-status--active" : ""}${blocked ? " habit-status--done" : ""}`}>
-          {isAkquise && todayN > 0 ? `${todayN}× heute` : statusLabel}
-        </span>
+        <span className="habit-label">{habit.label}</span>
+        {isAkquise
+          ? <span className="habit-count akquise-count">{todayN > 0 ? `${todayN}×` : "—"}</span>
+          : <span className="habit-count">×{total}</span>
+        }
       </button>
       <button
         type="button"
