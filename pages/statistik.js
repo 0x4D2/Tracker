@@ -1,13 +1,14 @@
 import Head from "next/head";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { buildStatsSnapshot, buildWeekReview } from "../lib/insights";
+import { buildDayDetail, buildMonthlyRadar, buildRiskForecast, buildStatsSnapshot, buildTrendWindow, buildWeekReview } from "../lib/insights";
 
 const INITIAL_STATE = {
   habits: { new: [], old: [] },
   totals: {},
   recentEntries: [],
   weekData: [],
+  historyDays: [],
   score: { score: 0, breakdown: [], werktag: true, kategorie: "neutral", akquiseCount: 0 },
   callStreak: 0,
   stats: {
@@ -22,23 +23,21 @@ function formatScoreValue(score) {
   return score > 0 ? `+${score}` : `${score}`;
 }
 
-function formatRecentTimestamp(date, time) {
-  if (!date) {
-    return time || "";
-  }
-
-  const [year, month, day] = date.split("-");
-  return `${day}.${month}.${year}${time ? ` · ${time}` : ""}`;
-}
-
-function scorePointColor(points) {
-  return points >= 0 ? "#f0d080" : "#cc4444";
+function formatDetailDate(dateStr) {
+  const [year, month, day] = dateStr.split("-");
+  return new Intl.DateTimeFormat("de-DE", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(Number(year), Number(month) - 1, Number(day)));
 }
 
 export default function Statistik() {
   const [state, setState] = useState(INITIAL_STATE);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [activeDay, setActiveDay] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -74,7 +73,27 @@ export default function Statistik() {
 
   const snapshot = buildStatsSnapshot(state);
   const review = buildWeekReview(state.weekData);
-  const maxVolume = Math.max(...review.days.map((day) => Math.max(day.new, day.old, 1)), 1);
+  const trendDays = buildTrendWindow(state.historyDays);
+  const riskForecast = buildRiskForecast(state.historyDays);
+  const monthlyRadar = buildMonthlyRadar(state.historyDays);
+  const monthlySeries = monthlyRadar.series;
+  const currentMonthSeries = monthlySeries[monthlySeries.length - 1] || null;
+  const previousMonthSeries = monthlySeries.length > 1 ? monthlySeries[0] : null;
+  const selectedDay = trendDays.find((day) => day.date === activeDay) || trendDays[trendDays.length - 1] || null;
+  const detail = buildDayDetail(selectedDay, state.habits);
+  const maxVolume = Math.max(
+    ...review.days.map((day, index) => Math.max(day.new, day.old, review.previousDays[index]?.new || 0, review.previousDays[index]?.old || 0, 1)),
+    1
+  );
+
+  useEffect(() => {
+    if (!trendDays.length || activeDay) {
+      return;
+    }
+
+    const defaultDay = [...trendDays].reverse().find((day) => day.total > 0 || day.note) || trendDays[trendDays.length - 1];
+    setActiveDay(defaultDay?.date || null);
+  }, [trendDays, activeDay]);
 
   return (
     <>
@@ -114,16 +133,6 @@ export default function Statistik() {
               </div>
             </section>
 
-            <section className="stats-grid" aria-label="Statistikübersicht">
-              {snapshot.cards.map((card) => (
-                <article key={card.label} className={`stats-card stats-card--${card.tone}`}>
-                  <span className="stats-card__label">{card.label}</span>
-                  <strong className="stats-card__value">{card.value}</strong>
-                  <span className="stats-card__meta">{card.meta}</span>
-                </article>
-              ))}
-            </section>
-
             <section className="week-card" aria-labelledby="week-card-title">
               <div className="week-card-head">
                 <div>
@@ -138,18 +147,44 @@ export default function Statistik() {
 
               <p className="week-lead">{review.verdict.text}</p>
 
+              <div className={`week-compare week-compare--${review.comparison.tone}`} aria-label="Vergleich zur Vorwoche">
+                <div>
+                  <p className="week-compare__title">{review.comparison.title}</p>
+                  <p className="week-compare__text">{review.comparison.text}</p>
+                </div>
+                <div className="week-compare__chips">
+                  <article className={`week-compare-chip week-compare-chip--${review.comparison.tone}`}>
+                    <span className="week-compare-chip__label">Saldo</span>
+                    <span className="week-compare-chip__value">{review.comparison.hasPrevious ? (review.comparison.netDelta > 0 ? `+${review.comparison.netDelta}` : review.comparison.netDelta) : "offen"}</span>
+                  </article>
+                  <article className={`week-compare-chip week-compare-chip--${review.comparison.buildDelta >= 0 ? "gold" : "red"}`}>
+                    <span className="week-compare-chip__label">Aufbau</span>
+                    <span className="week-compare-chip__value">{review.comparison.hasPrevious ? (review.comparison.buildDelta > 0 ? `+${review.comparison.buildDelta}` : review.comparison.buildDelta) : "offen"}</span>
+                  </article>
+                  <article className={`week-compare-chip week-compare-chip--${review.comparison.oldDelta <= 0 ? "gold" : "red"}`}>
+                    <span className="week-compare-chip__label">Rückfall</span>
+                    <span className="week-compare-chip__value">{review.comparison.hasPrevious ? (review.comparison.oldDelta > 0 ? `+${review.comparison.oldDelta}` : review.comparison.oldDelta) : "offen"}</span>
+                  </article>
+                </div>
+              </div>
+
               <div className="week-chart" aria-label="Einträge der letzten sieben Tage">
-                {review.days.map((day) => {
+                {review.days.map((day, index) => {
+                  const previousDay = review.previousDays[index];
                   const newHeight = `${Math.max((day.new / maxVolume) * 100, day.new > 0 ? 8 : 0)}%`;
                   const oldHeight = `${Math.max((day.old / maxVolume) * 100, day.old > 0 ? 8 : 0)}%`;
+                  const previousNewHeight = `${Math.max(((previousDay?.new || 0) / maxVolume) * 100, previousDay?.new > 0 ? 8 : 0)}%`;
+                  const previousOldHeight = `${Math.max(((previousDay?.old || 0) / maxVolume) * 100, previousDay?.old > 0 ? 8 : 0)}%`;
 
                   return (
-                    <article key={day.date} className="week-day">
+                    <button key={day.date} type="button" className={`week-day${activeDay === day.date ? " week-day--active" : ""}`} onClick={() => setActiveDay(day.date)}>
                       <div className="week-bar-stack">
                         <div className="week-bar-track week-bar-track--up">
+                          {previousDay ? <span className="week-bar week-bar--ghost-new" style={{ height: previousNewHeight }} /> : null}
                           <span className="week-bar week-bar--new" style={{ height: newHeight }} />
                         </div>
                         <div className="week-bar-track week-bar-track--down">
+                          {previousDay ? <span className="week-bar week-bar--ghost-old" style={{ height: previousOldHeight }} /> : null}
                           <span className="week-bar week-bar--old" style={{ height: oldHeight }} />
                         </div>
                       </div>
@@ -157,94 +192,174 @@ export default function Statistik() {
                         {day.net > 0 ? `+${day.net}` : day.net}
                       </span>
                       <span className="week-day-label">{day.label}</span>
-                    </article>
+                    </button>
                   );
                 })}
               </div>
 
-              <div className="week-meters" aria-label="Wochenbilanz">
-                <div className="week-meter week-meter--new">
-                  <span className="week-meter__label">Aufbau</span>
-                  <span className="week-meter__value">{review.totalNew}</span>
-                </div>
-                <div className="week-meter week-meter--old">
-                  <span className="week-meter__label">Rückfall</span>
-                  <span className="week-meter__value">{review.totalOld}</span>
-                </div>
-              </div>
-
-              <div className="week-insights">
-                {review.insights.map((item) => (
-                  <article key={item.label} className={`week-insight week-insight--${item.tone}`}>
-                    <span className="week-insight__label">{item.label}</span>
-                    <span className="week-insight__value">{item.value}</span>
-                  </article>
-                ))}
-              </div>
             </section>
 
-            <section className="stats-panels">
-              <article className="stats-panel">
+            <section className="trend-card" aria-labelledby="trend-card-title">
+              <div className="stats-panel__head">
+                <p className="week-kicker">Verlauf 30 Tage</p>
+                <h2 id="trend-card-title" className="stats-panel__title">Heatline und Tages-Drilldown</h2>
+              </div>
+
+              <div className="trend-strip" aria-label="30-Tage-Heatline">
+                {trendDays.map((day) => (
+                  <button
+                    key={day.date}
+                    type="button"
+                    className={`trend-cell trend-cell--${day.tone} trend-cell--level-${day.level}${activeDay === day.date ? " trend-cell--active" : ""}`}
+                    onClick={() => setActiveDay(day.date)}
+                    aria-label={`${day.date}: ${day.new} Aufbau, ${day.old} Rückfall${day.note ? ", mit Notiz" : ""}`}
+                    title={`${day.date}: ${day.new} Aufbau, ${day.old} Rückfall${day.note ? ", mit Notiz" : ""}`}
+                  >
+                    <span className="trend-cell__day">{day.shortLabel}</span>
+                  </button>
+                ))}
+              </div>
+
+              {detail ? (
+                <article className={`trend-detail trend-detail--${detail.tone}`}>
+                  <div className="trend-detail__head">
+                    <div>
+                      <p className="week-kicker">Ausgewählter Tag</p>
+                      <h3 className="trend-detail__title">{formatDetailDate(detail.date)}</h3>
+                      <p className="trend-detail__lead">{detail.headline}</p>
+                    </div>
+                    <div className="trend-detail__score">
+                      <span className="trend-detail__score-label">Score</span>
+                      <span className="trend-detail__score-value">{formatScoreValue(detail.score.score)}</span>
+                    </div>
+                  </div>
+
+                  <div className="trend-detail__stats">
+                    <article className="trend-stat">
+                      <span className="trend-stat__label">Aufbau</span>
+                      <span className="trend-stat__value">{detail.new}</span>
+                    </article>
+                    <article className="trend-stat">
+                      <span className="trend-stat__label">Rückfall</span>
+                      <span className="trend-stat__value">{detail.old}</span>
+                    </article>
+                    <article className="trend-stat">
+                      <span className="trend-stat__label">Einträge</span>
+                      <span className="trend-stat__value">{detail.total}</span>
+                    </article>
+                  </div>
+
+                  {detail.note ? <p className="trend-detail__note">{detail.note}</p> : null}
+
+                  <div className="trend-detail__entries">
+                    {!detail.groupedEntries.length ? (
+                      <p className="empty-state">Keine Einträge an diesem Tag.</p>
+                    ) : (
+                      detail.groupedEntries.map((entry) => (
+                        <article key={`${detail.date}-${entry.type}-${entry.label}`} className={`trend-entry trend-entry--${entry.type}`}>
+                          <span className="trend-entry__label">{entry.label}</span>
+                          <span className="trend-entry__meta">{entry.count}×{entry.time ? ` · ${entry.time}` : ""}</span>
+                        </article>
+                      ))
+                    )}
+                  </div>
+                </article>
+              ) : null}
+            </section>
+
+            <section className="stats-panels stats-panels--advanced">
+              <article className={`stats-panel stats-panel--risk stats-panel--${riskForecast.tone}`}>
                 <div className="stats-panel__head">
-                  <p className="week-kicker">Schlüsselstellen</p>
-                  <h2 className="stats-panel__title">Was gerade wirkt</h2>
+                  <p className="week-kicker">Prognose</p>
+                  <h2 className="stats-panel__title">Risikodruck der nächsten Tage</h2>
                 </div>
-                <div className="stats-highlights">
-                  {snapshot.highlights.map((item) => (
-                    <article key={item.label} className={`stats-highlight stats-highlight--${item.tone}`}>
-                      <span className="stats-highlight__label">{item.label}</span>
-                      <span className="stats-highlight__value">{item.value}</span>
+
+                <p className="risk-title">{riskForecast.title}</p>
+                <p className="risk-lead">{riskForecast.lead}</p>
+
+                <div className="risk-chips">
+                  {riskForecast.chips.map((chip) => (
+                    <article key={chip.label} className={`risk-chip risk-chip--${chip.tone}`}>
+                      <span className="risk-chip__label">{chip.label}</span>
+                      <span className="risk-chip__value">{chip.value}</span>
+                    </article>
+                  ))}
+                </div>
+
+                <div className="risk-signals">
+                  {riskForecast.signals.map((signal) => (
+                    <article key={signal} className="risk-signal">
+                      <span className="risk-signal__text">{signal}</span>
                     </article>
                   ))}
                 </div>
               </article>
 
-              <article className="stats-panel">
+              <article className="stats-panel stats-panel--radar">
                 <div className="stats-panel__head">
-                  <p className="week-kicker">Live-Bild</p>
-                  <h2 className="stats-panel__title">Jüngste Einträge</h2>
+                  <p className="week-kicker">Monatsbild</p>
+                  <h2 className="stats-panel__title">Monatsvergleich</h2>
                 </div>
-                {!state.recentEntries.length ? (
-                  <p className="empty-state">Noch keine Einträge vorhanden.</p>
-                ) : (
-                  <div className="stats-feed">
-                    {state.recentEntries.slice(0, 8).map((entry) => (
-                      <article key={entry.id} className={`stats-feed-item stats-feed-item--${entry.type}`}>
-                        <span className="stats-feed-item__label">{entry.label}</span>
-                        <span className="stats-feed-item__meta">{formatRecentTimestamp(entry.date, entry.time)}</span>
+
+                <div className="line-chart-card">
+                  <div className="line-chart__legend" aria-label="Monate">
+                    {monthlySeries.map((series) => (
+                      <article key={series.label} className={`line-chart__legend-item line-chart__legend-item--${series.tone}`}>
+                        <span className="line-chart__legend-swatch" />
+                        <span className="line-chart__legend-label">{series.label}</span>
                       </article>
                     ))}
                   </div>
-                )}
+
+                  <div className="month-pillars" aria-label="Monatsvergleich je Bereich">
+                    {monthlyRadar.axes.map((axis, index) => {
+                      const currentValue = currentMonthSeries?.values[index] || 0;
+                      const previousValue = previousMonthSeries ? previousMonthSeries.values[index] || 0 : null;
+                      const currentTop = `${100 - currentValue}%`;
+                      const previousTop = previousValue === null ? null : `${100 - previousValue}%`;
+                      const deltaTone = previousValue === null
+                        ? "gold"
+                        : currentValue > previousValue
+                        ? "green"
+                        : currentValue < previousValue
+                        ? "red"
+                        : "gold";
+                      const rangeTop = previousValue === null ? null : `${100 - Math.max(currentValue, previousValue)}%`;
+                      const rangeHeight = previousValue === null ? null : `${Math.max(Math.abs(currentValue - previousValue), 2)}%`;
+
+                      return (
+                        <article key={axis.key} className="month-pillar">
+                          <div className="month-pillar__values">
+                            {previousValue !== null ? <span className="month-pillar__value month-pillar__value--previous">{previousValue}</span> : null}
+                            <span className={`month-pillar__value month-pillar__value--${currentMonthSeries?.tone || "gold"}`}>{currentValue}</span>
+                          </div>
+
+                          <div className="month-pillar__track">
+                            <span className="month-pillar__rail" />
+                            {previousValue !== null ? (
+                              <span
+                                className={`month-pillar__range month-pillar__range--${deltaTone}`}
+                                style={{ top: rangeTop, height: rangeHeight }}
+                              />
+                            ) : null}
+                            {previousValue !== null ? (
+                              <span className="month-pillar__dot month-pillar__dot--previous" style={{ top: previousTop }} />
+                            ) : null}
+                            <span
+                              className={`month-pillar__dot month-pillar__dot--${currentMonthSeries?.tone || "gold"}`}
+                              style={{ top: currentTop }}
+                            />
+                          </div>
+
+                          <span className="month-pillar__label">{axis.label}</span>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </div>
               </article>
             </section>
 
-            <section className="stats-panel stats-panel--score">
-              <div className="stats-panel__head">
-                <p className="week-kicker">Punkte</p>
-                <h2 className="stats-panel__title">Tages-Score im Detail</h2>
-              </div>
-
-              <div className="stats-score-head">
-                <span className="stats-score-head__label">Heute</span>
-                <span className="stats-score-head__value">{formatScoreValue(state.score.score)}</span>
-                <span className="stats-score-head__meta">{state.score.werktag ? "Werktag" : "Wochenende"}</span>
-              </div>
-
-              {state.score.breakdown.length > 0 ? (
-                <div className="score-breakdown score-breakdown--static">
-                  {state.score.breakdown.map((item, index) => (
-                    <div key={`${item.label}-${index}`} className="score-row">
-                      <span className="score-row-label">{item.label}</span>
-                      <span className="score-row-cat">{item.category}</span>
-                      <span className="score-row-pts" style={{ color: scorePointColor(item.points) }}>{item.points > 0 ? `+${item.points}` : item.points}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="empty-state">Heute gibt es noch keine Score-Beiträge.</p>
-              )}
-            </section>
           </>
         )}
       </main>

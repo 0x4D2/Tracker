@@ -1,9 +1,11 @@
-import { addEntry, deleteEntry } from "../../lib/tracker";
+import { addEntry, deleteEntry, todayKey } from "../../lib/tracker";
+import { recalculateStarDays } from "../../lib/stars";
 
 export default async function handler(req, res) {
   if (req.method === "POST") {
     try {
       const nextState = await addEntry(req.body?.habitId);
+      await recalculateStarDays(todayKey());
       return res.status(200).json(nextState);
     } catch (error) {
       return res.status(400).json({ message: error.message });
@@ -13,6 +15,7 @@ export default async function handler(req, res) {
   if (req.method === "DELETE") {
     try {
       const nextState = await deleteEntry(req.body?.id);
+      await recalculateStarDays(todayKey());
       return res.status(200).json(nextState);
     } catch (error) {
       return res.status(400).json({ message: error.message });
