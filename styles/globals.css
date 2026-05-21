@@ -1029,12 +1029,14 @@ button {
   cursor: not-allowed;
 }
 
-.habit-card.done .habit-main {
-  border-color: rgba(201, 168, 76, 0.28);
+.habit-card.new.done .habit-main {
+  border-color: rgba(201, 168, 76, 0.45);
+  background: rgba(201, 168, 76, 0.06);
 }
 
 .habit-card.old.done .habit-main {
-  border-color: rgba(204, 68, 68, 0.28);
+  border-color: rgba(204, 68, 68, 0.4);
+  background: rgba(204, 68, 68, 0.06);
 }
 
 .habit-dot {
@@ -1070,6 +1072,30 @@ button {
   color: var(--muted);
   font-size: 0.68rem;
   letter-spacing: 0.04em;
+}
+
+.habit-week-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.habit-week-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+
+.habit-card.new .habit-week-dot--on {
+  background: var(--gold);
+  opacity: 0.75;
+}
+
+.habit-card.old .habit-week-dot--on {
+  background: var(--gold);
+  opacity: 0.65;
 }
 
 .habit-status {

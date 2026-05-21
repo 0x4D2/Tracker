@@ -563,6 +563,17 @@ export default function Home() {
     acc[e.habitId] = (acc[e.habitId] || 0) + 1;
     return acc;
   }, {});
+  const weekBitsPerHabit = (() => {
+    const last7 = (state.historyDays || []).slice(-7);
+    const map = {};
+    for (let i = 0; i < last7.length; i++) {
+      for (const entry of (last7[i].entries || [])) {
+        if (!map[entry.habitId]) map[entry.habitId] = new Array(7).fill(false);
+        map[entry.habitId][i] = true;
+      }
+    }
+    return map;
+  })();
 
   useEffect(() => {
     stateRef.current = state;
@@ -889,6 +900,7 @@ export default function Home() {
             totals={state.totals}
             completedToday={completedToday}
             todayCount={todayCountPerHabit}
+            weekBits={weekBitsPerHabit}
             savedLabel={lastRecorded?.type === "new" ? lastRecorded.label : null}
             value={drafts.new}
             category={drafts.newCat}
@@ -907,6 +919,7 @@ export default function Home() {
             totals={state.totals}
             completedToday={completedToday}
             todayCount={todayCountPerHabit}
+            weekBits={weekBitsPerHabit}
             savedLabel={lastRecorded?.type === "old" ? lastRecorded.label : null}
             value={drafts.old}
             category={drafts.oldCat}
@@ -999,6 +1012,7 @@ function TrackerSection({
   totals,
   completedToday,
   todayCount,
+  weekBits,
   savedLabel,
   value,
   category,
@@ -1053,6 +1067,7 @@ function TrackerSection({
             done={completedToday.has(habit.id)}
             todayN={todayCount[habit.id] || 0}
             total={totals[habit.id] || 0}
+            weekBits={weekBits[habit.id] || []}
             pendingDelete={pendingDelete}
             disabled={disabled}
             onRecord={() => { setPendingDelete(null); onRecord(habit.id); }}
@@ -1115,12 +1130,12 @@ const SCORE_COLORS = {
 };
 const CAT_LABELS = { AKQUISE: "Akquise ×5", HYGIENE: "Hygiene ×1", SABOTAGE: "Sabotage ×2" };
 
-function HabitCard({ habit, tone, done, todayN, total, pendingDelete, disabled, onRecord, onDelete }) {
+function HabitCard({ habit, tone, done, todayN, total, weekBits, pendingDelete, disabled, onRecord, onDelete }) {
   const isAkquise = habit.category === "AKQUISE";
   const blocked = done && !isAkquise;
   const statusLabel = tone === "new"
     ? todayN > 0
-      ? todayN > 1 ? `${todayN}× heute` : "heute"
+      ? isAkquise ? `${todayN}× heute` : "heute"
       : "offen"
     : todayN > 0
     ? `${todayN}× passiert`
@@ -1138,10 +1153,16 @@ function HabitCard({ habit, tone, done, todayN, total, pendingDelete, disabled, 
         <span className="habit-dot" />
         <span className="habit-copy">
           <span className="habit-label">{habit.label}</span>
-          <span className="habit-total">{`gesamt ${total}×`}</span>
+          <span className="habit-week-dots" aria-hidden="true">
+            {Array.from({ length: 7 }, (_, i) => {
+              const hasEntry = weekBits[i] === true;
+              const on = tone === "old" ? !hasEntry : hasEntry;
+              return <span key={i} className={`habit-week-dot${on ? " habit-week-dot--on" : ""}`} />;
+            })}
+          </span>
         </span>
         <span className={`habit-status habit-status--${tone}${todayN > 0 ? " habit-status--active" : ""}${blocked ? " habit-status--done" : ""}`}>
-          {isAkquise && todayN > 0 ? `${todayN}× heute` : statusLabel}
+          {statusLabel}
         </span>
       </button>
       <button
