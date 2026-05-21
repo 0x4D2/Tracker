@@ -3,8 +3,8 @@ import { useRouter } from "next/router";
 
 const TABS = [
   { href: "/", label: "Tracker" },
-  { href: "/statistik", label: "Statistik" },
   { href: "/verlauf", label: "Verlauf" },
+  { href: "/statistik", label: "Statistik" },
 ];
 
 export default function NavTabs() {

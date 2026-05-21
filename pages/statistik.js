@@ -65,7 +65,9 @@ export default function Statistik() {
 
   const snapshot = buildStatsSnapshot(state);
   const review = buildWeekReview(state.weekData);
-  const trendDays = buildTrendWindow(state.historyDays);
+  const now = new Date();
+  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const trendDays = buildTrendWindow(state.historyDays.filter((d) => d.date.startsWith(monthPrefix)));
   const riskForecast = buildRiskForecast(state.historyDays);
   const monthlyRadar = buildMonthlyRadar(state.historyDays);
   const monthlySeries = monthlyRadar.series;
@@ -73,10 +75,8 @@ export default function Statistik() {
   const previousMonthSeries = monthlySeries.length > 1 ? monthlySeries[0] : null;
   const selectedDay = trendDays.find((day) => day.date === activeDay) || trendDays[trendDays.length - 1] || null;
   const detail = buildDayDetail(selectedDay, state.habits);
-  const maxVolume = Math.max(
-    ...review.days.map((day, index) => Math.max(day.new, day.old, review.previousDays[index]?.new || 0, review.previousDays[index]?.old || 0, 1)),
-    1
-  );
+  const allDays14 = [...(review.previousDays || []), ...(review.days || [])];
+  const maxVolume = Math.max(...allDays14.map((d) => Math.max(d.new, d.old, 1)), 1);
 
   useEffect(() => {
     if (!trendDays.length || activeDay) {
@@ -133,74 +133,33 @@ export default function Statistik() {
             </section>
 
             <section className="week-card" aria-labelledby="week-card-title">
-              <div className="week-card-head">
-                <div>
-                  <p className="week-kicker">Rückblick der Woche</p>
-                  <h2 id="week-card-title" className={`week-title week-title--${review.verdict.tone}`}>{review.verdict.title}</h2>
-                </div>
-                <div className="week-summary-badge">
-                  <span className="week-summary-badge__value">{review.activeDays}/7</span>
-                  <span className="week-summary-badge__label">aktive Tage</span>
-                </div>
-              </div>
-
-              <p className="week-lead">{review.verdict.text}</p>
-
-              <div className={`week-compare week-compare--${review.comparison.tone}`} aria-label="Vergleich zur Vorwoche">
-                <div>
-                  <p className="week-compare__title">{review.comparison.title}</p>
-                  <p className="week-compare__text">{review.comparison.text}</p>
-                </div>
-                <div className="week-compare__chips">
-                  <article className={`week-compare-chip week-compare-chip--${review.comparison.tone}`}>
-                    <span className="week-compare-chip__label">Saldo</span>
-                    <span className="week-compare-chip__value">{review.comparison.hasPrevious ? (review.comparison.netDelta > 0 ? `+${review.comparison.netDelta}` : review.comparison.netDelta) : "offen"}</span>
-                  </article>
-                  <article className={`week-compare-chip week-compare-chip--${review.comparison.buildDelta >= 0 ? "gold" : "red"}`}>
-                    <span className="week-compare-chip__label">Aufbau</span>
-                    <span className="week-compare-chip__value">{review.comparison.hasPrevious ? (review.comparison.buildDelta > 0 ? `+${review.comparison.buildDelta}` : review.comparison.buildDelta) : "offen"}</span>
-                  </article>
-                  <article className={`week-compare-chip week-compare-chip--${review.comparison.oldDelta <= 0 ? "gold" : "red"}`}>
-                    <span className="week-compare-chip__label">Rückfall</span>
-                    <span className="week-compare-chip__value">{review.comparison.hasPrevious ? (review.comparison.oldDelta > 0 ? `+${review.comparison.oldDelta}` : review.comparison.oldDelta) : "offen"}</span>
-                  </article>
-                </div>
-              </div>
-
-              <div className="week-chart" aria-label="Einträge der letzten sieben Tage">
-                {review.days.map((day, index) => {
-                  const previousDay = review.previousDays[index];
+              <div className="week-chart week-chart--14" aria-label="Letzte 14 Tage">
+                {allDays14.map((day) => {
                   const newHeight = `${Math.max((day.new / maxVolume) * 100, day.new > 0 ? 8 : 0)}%`;
                   const oldHeight = `${Math.max((day.old / maxVolume) * 100, day.old > 0 ? 8 : 0)}%`;
-                  const previousNewHeight = `${Math.max(((previousDay?.new || 0) / maxVolume) * 100, previousDay?.new > 0 ? 8 : 0)}%`;
-                  const previousOldHeight = `${Math.max(((previousDay?.old || 0) / maxVolume) * 100, previousDay?.old > 0 ? 8 : 0)}%`;
-
                   return (
                     <button key={day.date} type="button" className={`week-day${activeDay === day.date ? " week-day--active" : ""}`} onClick={() => setActiveDay(day.date)}>
                       <div className="week-bar-stack">
                         <div className="week-bar-track week-bar-track--up">
-                          {previousDay ? <span className="week-bar week-bar--ghost-new" style={{ height: previousNewHeight }} /> : null}
                           <span className="week-bar week-bar--new" style={{ height: newHeight }} />
                         </div>
                         <div className="week-bar-track week-bar-track--down">
-                          {previousDay ? <span className="week-bar week-bar--ghost-old" style={{ height: previousOldHeight }} /> : null}
                           <span className="week-bar week-bar--old" style={{ height: oldHeight }} />
                         </div>
                       </div>
                       <span className={`week-net week-net--${day.net > 0 ? "gold" : day.net < 0 ? "red" : "neutral"}`}>
-                        {day.net > 0 ? `+${day.net}` : day.net}
+                        {day.net !== 0 ? (day.net > 0 ? `+${day.net}` : day.net) : ""}
                       </span>
                       <span className="week-day-label">{day.label}</span>
                     </button>
                   );
                 })}
               </div>
-
             </section>
 
             <section className="trend-card" aria-labelledby="trend-card-title">
               <div className="stats-panel__head">
-                <p className="week-kicker">Verlauf 30 Tage</p>
+                <p className="week-kicker">{monthPrefix}</p>
                 <h2 id="trend-card-title" className="stats-panel__title">Heatline und Tages-Drilldown</h2>
               </div>
 

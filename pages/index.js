@@ -768,8 +768,8 @@ export default function Home() {
     const habit = [...state.habits.new, ...state.habits.old].find((h) => h.id === habitId);
     flashRef.current = { habitId, startTime: Date.now() };
     if (navigator.vibrate) navigator.vibrate(42);
-    runAction(() => request("/api/entries", { method: "POST", body: JSON.stringify({ habitId }) }));
-    setStarRefreshKey((k) => k + 1);
+    runAction(() => request("/api/entries", { method: "POST", body: JSON.stringify({ habitId }) }))
+      .then(() => setStarRefreshKey((k) => k + 1));
     if (habit) {
       setLastRecorded({ label: habit.label, type: habit.type });
       setTimeout(() => setLastRecorded(null), 3000);

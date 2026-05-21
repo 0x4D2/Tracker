@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(npx next build 2>&1)",
+      "Bash(npx next *)"
+    ]
+  }
+}
