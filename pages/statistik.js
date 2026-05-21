@@ -66,8 +66,16 @@ export default function Statistik() {
   const snapshot = buildStatsSnapshot(state);
   const review = buildWeekReview(state.weekData);
   const now = new Date();
-  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-  const trendDays = buildTrendWindow(state.historyDays.filter((d) => d.date.startsWith(monthPrefix)));
+  const year = now.getFullYear();
+  const month = now.getMonth();
+  const monthPrefix = `${year}-${String(month + 1).padStart(2, "0")}`;
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const historyByDate = new Map(state.historyDays.map((d) => [d.date, d]));
+  const fullMonthDays = Array.from({ length: daysInMonth }, (_, i) => {
+    const dateStr = `${monthPrefix}-${String(i + 1).padStart(2, "0")}`;
+    return historyByDate.get(dateStr) || { date: dateStr, new: 0, old: 0, total: 0, entries: [], note: "" };
+  });
+  const trendDays = buildTrendWindow(fullMonthDays);
   const riskForecast = buildRiskForecast(state.historyDays);
   const monthlyRadar = buildMonthlyRadar(state.historyDays);
   const monthlySeries = monthlyRadar.series;
@@ -83,7 +91,10 @@ export default function Statistik() {
       return;
     }
 
-    const defaultDay = [...trendDays].reverse().find((day) => day.total > 0 || day.note) || trendDays[trendDays.length - 1];
+    const todayStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const defaultDay = [...trendDays].reverse().find((day) => day.total > 0 || day.note)
+      || trendDays.find((d) => d.date === todayStr)
+      || trendDays[0];
     setActiveDay(defaultDay?.date || null);
   }, [trendDays, activeDay]);
 
@@ -170,7 +181,7 @@ export default function Statistik() {
                     <button
                       key={day.date}
                       type="button"
-                      className={`trend-cell trend-cell--${day.tone} trend-cell--level-${day.level}${activeDay === day.date ? " trend-cell--active" : ""}`}
+                      className={`trend-cell trend-cell--${day.tone} trend-cell--level-${day.level}${activeDay === day.date ? " trend-cell--active" : ""}${day.date > monthPrefix + "-" + String(now.getDate()).padStart(2,"0") ? " trend-cell--future" : ""}`}
                       onClick={() => setActiveDay(day.date)}
                       aria-label={`${day.date}: ${day.new} Aufbau, ${day.old} Rückfall${day.note ? ", mit Notiz" : ""}${dayStars.length ? `, ${dayStars.length} Stern${dayStars.length > 1 ? "e" : ""}` : ""}`}
                       title={`${day.date}: ${day.new} Aufbau, ${day.old} Rückfall${dayStars.length ? ` · ★ ${dayStars.join(" ")}` : ""}`}

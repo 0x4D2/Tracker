@@ -2674,6 +2674,12 @@ button {
   background: rgba(255, 255, 255, 0.03);
 }
 
+.trend-cell--future {
+  opacity: 0.3;
+  cursor: default;
+  pointer-events: none;
+}
+
 .trend-cell__stars {
   font-size: 0.38rem;
   color: var(--gold);
