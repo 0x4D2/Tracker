@@ -212,14 +212,17 @@ function StarDetail({ star, onClose, onRefresh }) {
                     "star-habit-item",
                     habit.is_required ? "star-habit-item--required" : "",
                     !editMode && habit.done_today ? "star-habit-item--done" : "",
+                    !editMode && habit.type === "old" && !habit.done_today ? "star-habit-item--triggered" : "",
                     !editMode && habit.is_required && !habit.done_today ? "star-habit-item--required-missing" : "",
                   ].filter(Boolean).join(" ")}
                 >
                   <span className="star-habit-type-dot" data-type={habit.type} />
                   <span className="star-habit-label">{habit.label}</span>
                   {!editMode && (
-                    <span className="star-habit-status">
-                      {habit.done_today ? "✓" : "✗"}
+                    <span className={`star-habit-status${!habit.done_today && habit.type === "old" ? " star-habit-status--triggered" : ""}`}>
+                      {habit.type === "old"
+                        ? habit.done_today ? "vermieden" : "getriggert"
+                        : habit.done_today ? "✓" : "✗"}
                     </span>
                   )}
                   {editMode && (
