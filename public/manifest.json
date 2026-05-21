@@ -1,7 +1,7 @@
 {
-  "name": "Dein Netz",
-  "short_name": "Netz",
-  "description": "Habit Tracker — Neues Ich vs Altes Ich",
+  "name": "Tracker",
+  "short_name": "Tracker",
+  "description": "Habit Tracker — Aufbau und Kontrolle",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#060606",

@@ -2490,8 +2490,8 @@ button {
 
 .month-pillars {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
 }
 
 .month-pillar {
@@ -2508,7 +2508,7 @@ button {
 
 .month-pillar__value {
   font-family: 'Cinzel', serif;
-  font-size: 0.72rem;
+  font-size: 0.78rem;
   line-height: 1;
 }
 
@@ -2599,7 +2599,7 @@ button {
   color: var(--text);
   text-align: center;
   font-family: 'Cinzel', serif;
-  font-size: 0.62rem;
+  font-size: 0.66rem;
   letter-spacing: 0.08em;
   line-height: 1.35;
 }

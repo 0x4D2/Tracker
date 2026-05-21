@@ -1,5 +1,5 @@
-const CACHE = 'tracker-v1';
-const PRECACHE = ['/', '/verlauf'];
+const CACHE = 'tracker-v2';
+const PRECACHE = ['/', '/verlauf', '/statistik'];
 
 self.addEventListener('install', (e) => {
   self.skipWaiting();
