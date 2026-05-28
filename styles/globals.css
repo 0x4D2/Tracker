@@ -923,6 +923,71 @@ button {
   padding-bottom: 20px;
 }
 
+.star-habit-section {
+  margin-bottom: 6px;
+}
+
+.star-habit-section--locked {
+  opacity: 0.45;
+}
+
+.star-habit-section__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0 8px;
+}
+
+.star-habit-section__num {
+  font-family: 'Cinzel', serif;
+  font-size: 0.58rem;
+  letter-spacing: 0.1em;
+  color: var(--gold);
+  background: rgba(201, 168, 76, 0.1);
+  border: 1px solid rgba(201, 168, 76, 0.25);
+  border-radius: 3px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+}
+
+.star-habit-section__name {
+  font-family: 'Cinzel', serif;
+  font-size: 0.65rem;
+  letter-spacing: 0.25em;
+  text-transform: uppercase;
+  color: var(--text);
+  flex: 1;
+}
+
+.star-habit-section__badge {
+  font-family: 'Cinzel', serif;
+  font-size: 0.56rem;
+  letter-spacing: 0.1em;
+  color: var(--gold);
+  opacity: 0.7;
+}
+
+.star-habit-section__badge--locked {
+  color: var(--muted);
+}
+
+.star-habit-section__preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0;
+}
+
+.star-habit-section__preview-item {
+  font-size: 0.76rem;
+  color: var(--muted);
+  font-style: italic;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 8px;
+}
+
 .section-label-row {
   display: flex;
   align-items: center;

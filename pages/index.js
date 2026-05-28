@@ -1,5 +1,4 @@
 import Head from "next/head";
-import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import StarSystem from "../components/StarSystem";
 import NavTabs from "../components/NavTabs";
@@ -537,6 +536,11 @@ async function request(path, options) {
   return payload;
 }
 
+function extractTimeMinutes(label) {
+  const m = String(label).match(/(\d{1,2}):(\d{2})/);
+  return m ? parseInt(m[1]) * 60 + parseInt(m[2]) : 9999;
+}
+
 export default function Home() {
   const canvasRef = useRef(null);
   const stateRef = useRef(INITIAL_STATE);
@@ -553,6 +557,8 @@ export default function Home() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [starRefreshKey, setStarRefreshKey] = useState(0);
+  const [starsStatus, setStarsStatus] = useState([]);
+  const sortedHabitsRef = useRef({ new: [], old: [] });
   const [drafts, setDrafts] = useState({ new: "", old: "", newCat: null, oldCat: null });
   const [todayLabel, setTodayLabel] = useState("");
   const [note, setNote] = useState("");
@@ -577,7 +583,20 @@ export default function Home() {
 
   useEffect(() => {
     stateRef.current = state;
-  }, [state]);
+    const starOrder = starsStatus.flatMap((s, si) =>
+      s.habits.map((h, hi) => [h.id, si * 1000 + hi])
+    );
+    const orderMap = Object.fromEntries(starOrder);
+    const sortFn = (a, b) => {
+      const ai = orderMap[a.id] ?? (9000 + extractTimeMinutes(a.label));
+      const bi = orderMap[b.id] ?? (9000 + extractTimeMinutes(b.label));
+      return ai - bi;
+    };
+    sortedHabitsRef.current = {
+      new: [...state.habits.new].sort(sortFn),
+      old: [...state.habits.old].sort(sortFn),
+    };
+  }, [state, starsStatus]);
 
   useEffect(() => {
     noteValueRef.current = note;
@@ -637,6 +656,16 @@ export default function Home() {
       return false;
     }
   }
+
+  useEffect(() => {
+    fetch("/api/stars/status").then((r) => r.json()).then(setStarsStatus).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (starRefreshKey > 0) {
+      fetch("/api/stars/status").then((r) => r.json()).then(setStarsStatus).catch(() => {});
+    }
+  }, [starRefreshKey]);
 
   useEffect(() => {
     let active = true;
@@ -724,7 +753,7 @@ export default function Home() {
       const liveState = stateRef.current;
       drawWeb(
         canvasRef.current,
-        liveState.habits,
+        sortedHabitsRef.current.new.length ? sortedHabitsRef.current : liveState.habits,
         liveState.totals,
         liveState.lastSeen,
         liveState.stats,
@@ -893,43 +922,70 @@ export default function Home() {
         <ScoreCard score={state.score} callStreak={state.callStreak} loading={loading} />
 
         <section className="controls">
-          <TrackerSection
-            label="Neues Ich — Fäden stärken"
-            tone="new"
-            habits={state.habits.new}
-            totals={state.totals}
-            completedToday={completedToday}
-            todayCount={todayCountPerHabit}
-            weekBits={weekBitsPerHabit}
-            savedLabel={lastRecorded?.type === "new" ? lastRecorded.label : null}
-            value={drafts.new}
-            category={drafts.newCat}
-            onCategoryChange={(cat) => setDrafts((c) => ({ ...c, newCat: cat }))}
-            disabled={busy}
-            onChange={(value) => setDrafts((current) => ({ ...current, new: value }))}
-            onSubmit={() => handleAddHabit("new")}
-            onRecord={handleRecord}
-            onRemove={handleRemoveHabit}
-          />
-
-          <TrackerSection
-            label="Altes Ich — Fäden schwächen"
-            tone="old"
-            habits={state.habits.old}
-            totals={state.totals}
-            completedToday={completedToday}
-            todayCount={todayCountPerHabit}
-            weekBits={weekBitsPerHabit}
-            savedLabel={lastRecorded?.type === "old" ? lastRecorded.label : null}
-            value={drafts.old}
-            category={drafts.oldCat}
-            onCategoryChange={(cat) => setDrafts((c) => ({ ...c, oldCat: cat }))}
-            disabled={busy}
-            onChange={(value) => setDrafts((current) => ({ ...current, old: value }))}
-            onSubmit={() => handleAddHabit("old")}
-            onRecord={handleRecord}
-            onRemove={handleRemoveHabit}
-          />
+          {starsStatus.length > 0 ? (
+            <>
+              {starsStatus.map((star) => {
+                const allHabits = [...state.habits.new, ...state.habits.old];
+                const starHabits = star.habits
+                  .map((sh) => allHabits.find((h) => h.id === sh.id))
+                  .filter(Boolean);
+                return (
+                  <StarHabitSection
+                    key={star.number}
+                    star={star}
+                    habits={starHabits}
+                    completedToday={completedToday}
+                    todayCount={todayCountPerHabit}
+                    weekBits={weekBitsPerHabit}
+                    disabled={busy}
+                    onRecord={handleRecord}
+                    onRemove={handleRemoveHabit}
+                  />
+                );
+              })}
+              {(() => {
+                const assignedIds = new Set(starsStatus.flatMap((s) => s.habits.map((h) => h.id)));
+                const unNew = state.habits.new.filter((h) => !assignedIds.has(h.id));
+                const unOld = state.habits.old.filter((h) => !assignedIds.has(h.id));
+                if (!unNew.length && !unOld.length) return null;
+                return (
+                  <>
+                    {unNew.length > 0 && (
+                      <TrackerSection label="Weitere Fäden — Aufbau" tone="new" habits={unNew}
+                        totals={state.totals} completedToday={completedToday} todayCount={todayCountPerHabit}
+                        weekBits={weekBitsPerHabit} savedLabel={lastRecorded?.type === "new" ? lastRecorded.label : null}
+                        value={drafts.new} category={drafts.newCat} onCategoryChange={(cat) => setDrafts((c) => ({ ...c, newCat: cat }))}
+                        disabled={busy} onChange={(v) => setDrafts((c) => ({ ...c, new: v }))}
+                        onSubmit={() => handleAddHabit("new")} onRecord={handleRecord} onRemove={handleRemoveHabit} />
+                    )}
+                    {unOld.length > 0 && (
+                      <TrackerSection label="Weitere Fäden — Muster" tone="old" habits={unOld}
+                        totals={state.totals} completedToday={completedToday} todayCount={todayCountPerHabit}
+                        weekBits={weekBitsPerHabit} savedLabel={lastRecorded?.type === "old" ? lastRecorded.label : null}
+                        value={drafts.old} category={drafts.oldCat} onCategoryChange={(cat) => setDrafts((c) => ({ ...c, oldCat: cat }))}
+                        disabled={busy} onChange={(v) => setDrafts((c) => ({ ...c, old: v }))}
+                        onSubmit={() => handleAddHabit("old")} onRecord={handleRecord} onRemove={handleRemoveHabit} />
+                    )}
+                  </>
+                );
+              })()}
+            </>
+          ) : (
+            <>
+              <TrackerSection label="Neues Ich — Fäden stärken" tone="new" habits={state.habits.new}
+                totals={state.totals} completedToday={completedToday} todayCount={todayCountPerHabit}
+                weekBits={weekBitsPerHabit} savedLabel={lastRecorded?.type === "new" ? lastRecorded.label : null}
+                value={drafts.new} category={drafts.newCat} onCategoryChange={(cat) => setDrafts((c) => ({ ...c, newCat: cat }))}
+                disabled={busy} onChange={(v) => setDrafts((c) => ({ ...c, new: v }))}
+                onSubmit={() => handleAddHabit("new")} onRecord={handleRecord} onRemove={handleRemoveHabit} />
+              <TrackerSection label="Altes Ich — Fäden schwächen" tone="old" habits={state.habits.old}
+                totals={state.totals} completedToday={completedToday} todayCount={todayCountPerHabit}
+                weekBits={weekBitsPerHabit} savedLabel={lastRecorded?.type === "old" ? lastRecorded.label : null}
+                value={drafts.old} category={drafts.oldCat} onCategoryChange={(cat) => setDrafts((c) => ({ ...c, oldCat: cat }))}
+                disabled={busy} onChange={(v) => setDrafts((c) => ({ ...c, old: v }))}
+                onSubmit={() => handleAddHabit("old")} onRecord={handleRecord} onRemove={handleRemoveHabit} />
+            </>
+          )}
         </section>
 
         <section className="canvas-wrap">
@@ -1005,11 +1061,55 @@ export default function Home() {
   );
 }
 
+function StarHabitSection({ star, habits, completedToday, todayCount, weekBits, disabled, onRecord, onRemove }) {
+  const [pendingDelete, setPendingDelete] = useState(null);
+  const isLocked = !star.unlocked;
+
+  function handleDelete(habitId) {
+    if (pendingDelete === habitId) { onRemove(habitId); setPendingDelete(null); }
+    else { setPendingDelete(habitId); setTimeout(() => setPendingDelete((c) => c === habitId ? null : c), 2500); }
+  }
+
+  return (
+    <div className={`star-habit-section${isLocked ? " star-habit-section--locked" : ""}`}>
+      <div className="star-habit-section__header">
+        <span className="star-habit-section__name">{star.name || `Phase ${star.number}`}</span>
+        {isLocked
+          ? <span className="star-habit-section__badge star-habit-section__badge--locked">gesperrt</span>
+          : <span className="star-habit-section__badge">{star.fill_percent}%</span>}
+      </div>
+      {isLocked ? (
+        <div className="star-habit-section__preview">
+          {star.habits.map((h) => (
+            <span key={h.id} className="star-habit-section__preview-item">{h.label}</span>
+          ))}
+        </div>
+      ) : (
+        <div className="habit-grid">
+          {(habits || []).map((habit) => (
+            <HabitCard
+              key={habit.id}
+              habit={habit}
+              tone={habit.type === "new" ? "new" : "old"}
+              done={completedToday.has(habit.id)}
+              todayN={todayCount[habit.id] || 0}
+              weekBits={weekBits[habit.id] || []}
+              pendingDelete={pendingDelete}
+              disabled={disabled}
+              onRecord={() => onRecord(habit.id)}
+              onDelete={() => handleDelete(habit.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TrackerSection({
   label,
   tone,
   habits,
-  totals,
   completedToday,
   todayCount,
   weekBits,
@@ -1066,7 +1166,6 @@ function TrackerSection({
             tone={tone}
             done={completedToday.has(habit.id)}
             todayN={todayCount[habit.id] || 0}
-            total={totals[habit.id] || 0}
             weekBits={weekBits[habit.id] || []}
             pendingDelete={pendingDelete}
             disabled={disabled}
@@ -1130,7 +1229,7 @@ const SCORE_COLORS = {
 };
 const CAT_LABELS = { AKQUISE: "Akquise ×5", HYGIENE: "Hygiene ×1", SABOTAGE: "Sabotage ×2" };
 
-function HabitCard({ habit, tone, done, todayN, total, weekBits, pendingDelete, disabled, onRecord, onDelete }) {
+function HabitCard({ habit, tone, done, todayN, weekBits, pendingDelete, disabled, onRecord, onDelete }) {
   const isAkquise = habit.category === "AKQUISE";
   const blocked = done && !isAkquise;
   const statusLabel = tone === "new"
